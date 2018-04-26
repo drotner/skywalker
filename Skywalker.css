@@ -1,0 +1,74 @@
+html, body, div, p {
+    font-family: "Roboto Condensed", sans-serif;
+}
+body {
+    padding: 5em;
+}
+p:last-child {
+    margin-bottom: 1rem;
+}
+em {
+    font-style: italic;
+}
+pre {
+    border: none;
+    margin-top: 0 !important;
+}
+pre[class*=language-] {
+    background-color: whitesmoke;
+    border-radius: 0.5em;
+}
+pre>code {
+    padding: 0;
+    margin: 0;
+}
+code {
+    font-family: 'Roboto Mono', monospace !important;
+    font-size: 0.7em;
+}
+.frame {
+    display: inline-block;
+    position: relative;
+    border: 0.4em solid whitesmoke;
+    padding: 2em;
+    margin: 0 0 1rem 0;
+    border-radius: 0.5em;
+}
+.frame > .caption {
+    position: absolute;
+    background-color: whitesmoke;
+    padding: .2em .3em;
+    font-size: 0.6em;
+    top: -.3em; left: -.3em;
+    border-radius: 0.5em;
+}
+.dot {
+    text-align: center;
+}
+.pb {
+    page-break-after: always;
+    margin: 5em 0;
+    border-bottom: 1px dashed lightgray;
+}
+.pb::before {
+    position: absolute;
+    content: "page break";
+    color: lightgray;
+    font-size: 0.5em;
+    font-family: 'Courier New', Courier, monospace;
+}
+.token.operator {
+    background-color: transparent;
+}
+@media print {
+    body {
+        padding: 0;
+    }
+    .pb {
+        margin: 0;
+        border: none;
+    }
+    .pb::before {
+        display: none;
+    }
+}

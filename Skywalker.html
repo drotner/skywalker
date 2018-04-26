@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css" />
+    <link rel="stylesheet" href="//cdn.rawgit.com/milligram/milligram/master/dist/milligram.min.css">
+    <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Roboto+Condensed:300,300i,400,400i,700,700i|Roboto+Mono" />
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/themes/prism.min.css" />
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/plugins/line-numbers/prism-line-numbers.min.css" />
+    <link rel="stylesheet" href="Skywalker.css" />
+    <title>Skywalker Design Document</title>
+</head>
+<body>
+<!-- 
+***************************************************************************************************
+DOCUMENT START
+***************************************************************************************************
+-->
+<div class="md">
+    # Project Skywalker
+    #### Design Document
+
+    Author: Rolf Lunder
+</div>
+<div class="pb"></div>
+<div class="md">
+    # Introduction
+    *Skywalker* is the code name for a new SIM architecture. As we are progressing towards Snow Sky we see that the requirements for SIM are going to change.
+
+    In order to support customer environments of varying sizes and complexity, we need to build a system that is both modular and flexible. We should allow the customer to run everything in a distributed fashion and at the same time provide a solution that feels unified and is easy to manage.
+</div>
+<div class="pb"></div>
+<div class="md">
+    # Basic Building Blocks
+
+    In this chapter, we are going sketch up the basic building blocks that will make such a system possible to implement.
+
+    ## Nodes
+    At the heart of the Skywalker architecture is the *Node* class. This class implements the fundamental protocol that is used for inter-process communication throughout the system.
+
+    The following example demonstrates the creation of a new node:
+</div>
+<pre><code class="lang-csharp">var a = new Node("a");</code></pre>
+<div>
+    <div class="frame">
+        <div class="caption">Single node</div>
+        <div class="dot">
+            a;
+        </div>
+    </div>
+</div>
+<div class="md">
+    We named the node *a*. The node's name should be a human readable alias that can be used to recognize it later on. The actual identity of a node is a GUID. We can get to it using the node's *Id* property:
+</div>
+<pre><code class="lang-csharp">a.Id.Dump();</code></pre>
+<pre><code class="lang-text">Output:
+a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25
+</code></pre>
+<div class="md">
+    In the above example we didn't specify an Id, so the node was assigned a random one. In most cases we would like node instances to have static Ids that survive restarts and crashes, so typically we would get the Id from some kind of configuration and then assign it when we create the instance:
+</div>
+<pre><code class="lang-csharp">var nodeName = Configuration.GetNodeName();
+var nodeId = Configuration.GetNodeId();
+var a = new Node("a", nodeId);
+</code></pre>
+<div class="md">
+    ## Edges
+    A single node just sits there and doesn't do very much. We can make the node listen for and accept connections from other nodes:
+</div>
+<pre><code class="lang-csharp">a.Listen("tcp://*:4242");</code></pre>
+<div class="md">
+    We can now create a second node, *b*, and connect it to *a*:
+</div>
+<pre><code class="lang-csharp line-numbers">var b = new Node("b");
+node.Connect("tcp://a:4242");
+</code></pre>
+<div>
+<div class="frame">
+    <div class="caption">Connected nodes</div>
+        <div class="dot">
+            a -> b[label="tcp connection"];
+        </div>
+    </div>
+</div>
+<div class="md">
+    We can even create more nodes and connect them:
+</div>
+<pre><code class="lang-csharp line-numbers">var c = new Node("c");
+c.Listen("tcp://*:4242");
+c.Connect("tcp://a:4242");
+
+var d = new Node("d");
+d.Connect("tcp://a:4242");
+
+var e = new Node("e");
+e.Connect("tcp://c:4242");
+
+var f = new Node("f");
+f.Connect("tcp://c:4242");
+</code></pre>
+<div class="frame">
+    <div class="caption">Complex graph</div>
+    <div class="dot">
+        a b c d e f;
+        a->{b c d};
+        c->e;
+        c->f;
+        {rank = same e f}
+    </div>
+</div>
+<div class="md">
+    ## Messages
+</div>
+<pre><code class="lang-csharp">struct Message
+{
+    public byte Hops;       // Number of hops made thus far
+    public byte Life;       // Time-to-live (number of hops left before message dies)
+    public Guid SenderId;   // The Id of the node that sent the message
+    public Guid ReceiverId; // The Id of the node or predefined set that should receive the message
+    public string Topic;    // The topic that the message belongs to
+    public Frame[] Frames;  // The data frames which constitute the content of the message
+}
+
+struct Frame
+{
+    public byte[] Buffer;
+}    
+</code></pre>
+<pre><code class="lang-csharp">// System-reserved topics
+static class SystemTopics
+{
+    public const string All = "system/";
+    public const string Beacon = "system/beacon/";
+    public const string Ping = "system/ping/";
+    public const string Pong = "system/pong/";
+}
+</code></pre>
+<pre><code class="lang-csharp">foreach (var msg in node.Subscribe("some_topic"))
+{
+    // Handle message
+}
+</code></pre>
+<pre><code class="lang-csharp">class Node
+{
+    // ...
+
+    public void Send(string topic, Guid receiverId, params Frame[] frames)
+    {
+        // ...
+    }
+
+    // ...
+} 
+
+node.Send("some_topic", receiverId, new byte[] {1,2,3});
+
+static class Receivers
+{
+    public static readonly Guid Ancestors = new Guid("00000000-0000-0000-0000-000000000000");
+    public static readonly Guid Everybody = new Guid("0F0F0F0F-0F0F-0F0F-0F0F-0F0F0F0F0F0F");
+    public static readonly Guid Children = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF");
+}
+</code></pre>
+<pre><code class="lang-csharp">f.Send("chat/", Receivers.Ancestors, Encoding.ASCII.GetBytes("Hello, ancestors!"));
+</code></pre>
+<div class="frame">
+    <div class="caption">Message bubbles up to all ancestor nodes</div>
+    <div class="dot">
+        a[fillcolor=firebrick2]
+        b
+        c[fillcolor=firebrick2]
+        d
+        e
+        f
+        a->{b d}
+        c->e
+        edge[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
+        a->c
+        c->f
+    </div>
+</div>
+<pre><code class="lang-csharp">d.Send("chat/", Receivers.Everybody, Encoding.ASCII.GetBytes("Hello, everybody!"));
+</code></pre>
+<div class="frame">
+    <div class="caption">Message is broadcasted to all reachable nodes</div>
+    <div class="dot">
+        a[fillcolor=firebrick2]
+        b[fillcolor=firebrick2]
+        c[fillcolor=firebrick2]
+        d
+        e[fillcolor=firebrick2]
+        f[fillcolor=firebrick2]
+        a->d[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, everybody!\"]"]
+        edge[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, everybody!\"]"]
+        a->b
+        a->c
+        c->e
+        c->f
+    </div>
+</div>
+<pre><code class="lang-csharp">c.Send("chat/", Receivers.Children, Encoding.ASCII.GetBytes("Hello, babies!"));
+</code></pre>
+<div class="frame">
+    <div class="caption">Message sinks down to all children nodes</div>
+    <div class="dot">
+        a
+        b
+        c
+        d
+        e[fillcolor=firebrick2]
+        f[fillcolor=firebrick2]
+        a->{b d}
+        c->e[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
+        a->c
+        c->f[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
+    </div>
+</div>
+<div class="md">
+    # HTTP
+</div>
+<pre><code class="lang-csharp">var server = new HttpServer(node);</code></pre>
+<div class="pb"></div>
+<div class="md">
+    # Scratchpad
+
+    ## Dynamic Discovery
+    ## Consumer-Driven Contracts
+    ## JSON Schema
+    ## Security/Encryption
+    ## Skywalker in Snow Sky
+    ## Offline Scenarios
+</div>
+<!-- 
+***************************************************************************************************
+DOCUMENT END
+***************************************************************************************************
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.8.6/showdown.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/1.8.1/viz.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/components/prism-csharp.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+<script src="Skywalker.js"></script>
+</body>
+</html>
