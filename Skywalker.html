@@ -42,7 +42,7 @@ DOCUMENT START
 
     The following example demonstrates the creation of a new node:
 </div>
-<pre><code class="lang-csharp">var a = new Node("a");</code></pre>
+<pre><code class="lang-csharp line-numbers">var a = new Node("a");</code></pre>
 <div>
     <div class="frame">
         <div class="caption">Single node</div>
@@ -54,14 +54,14 @@ DOCUMENT START
 <div class="md">
     We named the node *a*. The node's name should be a human readable alias that can be used to recognize it later on. The actual identity of a node is a GUID. We can get to it using the node's *Id* property:
 </div>
-<pre><code class="lang-csharp">a.Id.Dump();</code></pre>
+<pre><code class="lang-csharp line-numbers">a.Id.Dump();</code></pre>
 <pre><code class="lang-text">Output:
 a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25
 </code></pre>
 <div class="md">
     In the above example we didn't specify an Id, so the node was assigned a random one. In most cases we would like node instances to have static Ids that survive restarts and crashes, so typically we would get the Id from some kind of configuration and then assign it when we create the instance:
 </div>
-<pre><code class="lang-csharp">var nodeName = Configuration.GetNodeName();
+<pre><code class="lang-csharp line-numbers">var nodeName = Configuration.GetNodeName();
 var nodeId = Configuration.GetNodeId();
 var a = new Node("a", nodeId);
 </code></pre>
@@ -69,7 +69,7 @@ var a = new Node("a", nodeId);
     ## Edges
     A single node just sits there and doesn't do very much. We can make the node listen for and accept connections from other nodes:
 </div>
-<pre><code class="lang-csharp">a.Listen("tcp://*:4242");</code></pre>
+<pre><code class="lang-csharp line-numbers">a.Listen("tcp://*:4242");</code></pre>
 <div class="md">
     We can now create a second node, *b*, and connect it to *a*:
 </div>
@@ -113,7 +113,7 @@ f.Connect("tcp://c:4242");
 <div class="md">
     ## Messages
 </div>
-<pre><code class="lang-csharp">struct Message
+<pre><code class="lang-csharp line-numbers">struct Message
 {
     public byte Hops;       // Number of hops made thus far
     public byte Life;       // Time-to-live (number of hops left before message dies)
@@ -128,7 +128,7 @@ struct Frame
     public byte[] Buffer;
 }    
 </code></pre>
-<pre><code class="lang-csharp">// System-reserved topics
+<pre><code class="lang-csharp line-numbers">// System-reserved topics
 static class SystemTopics
 {
     public const string All = "system/";
@@ -137,12 +137,12 @@ static class SystemTopics
     public const string Pong = "system/pong/";
 }
 </code></pre>
-<pre><code class="lang-csharp">foreach (var msg in node.Subscribe("some_topic"))
+<pre><code class="lang-csharp line-numbers">foreach (var msg in node.Subscribe("some_topic/"))
 {
     // Handle message
 }
 </code></pre>
-<pre><code class="lang-csharp">class Node
+<pre><code class="lang-csharp line-numbers">class Node
 {
     // ...
 
@@ -154,7 +154,7 @@ static class SystemTopics
     // ...
 } 
 
-node.Send("some_topic", receiverId, new byte[] {1,2,3});
+node.Send("some_topic/", receiverId, new byte[] {1,2,3});
 
 static class Receivers
 {
@@ -163,7 +163,31 @@ static class Receivers
     public static readonly Guid Children = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF");
 }
 </code></pre>
-<pre><code class="lang-csharp">f.Send("chat/", Receivers.Ancestors, Encoding.ASCII.GetBytes("Hello, ancestors!"));
+<div class="md">
+    ### Sending a message to a specific receiver
+</div>
+<pre><code class="lang-csharp line-numbers">d.Send("chat/", new Guid("fff62e93-e793-49f9-ae54-ffff20cdae15"), Encoding.ASCII.GetBytes("Hello, e!"));
+</code></pre>
+<div class="frame">
+    <div class="caption">Message is routed to the correct receiver</div>
+    <div class="dot">
+        a
+        b
+        c
+        d[color=firebrick2]
+        e[fillcolor=firebrick2]
+        f
+        a->b
+        a->d[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
+        c->e[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
+        a->c[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
+        c->f
+    </div>
+</div>
+<div class="md">
+    ### Sending a message to all ancestor nodes
+</div>
+<pre><code class="lang-csharp line-numbers">f.Send("chat/", Receivers.Ancestors, Encoding.ASCII.GetBytes("Hello, ancestors!"));
 </code></pre>
 <div class="frame">
     <div class="caption">Message bubbles up to all ancestor nodes</div>
@@ -173,7 +197,7 @@ static class Receivers
         c[fillcolor=firebrick2]
         d
         e
-        f
+        f[color=firebrick2]
         a->{b d}
         c->e
         edge[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
@@ -181,7 +205,10 @@ static class Receivers
         c->f
     </div>
 </div>
-<pre><code class="lang-csharp">d.Send("chat/", Receivers.Everybody, Encoding.ASCII.GetBytes("Hello, everybody!"));
+<div class="md">
+    ### Sending a message to everybody (broadcasting)
+</div>
+<pre><code class="lang-csharp line-numbers">d.Send("chat/", Receivers.Everybody, Encoding.ASCII.GetBytes("Hello, everybody!"));
 </code></pre>
 <div class="frame">
     <div class="caption">Message is broadcasted to all reachable nodes</div>
@@ -189,7 +216,7 @@ static class Receivers
         a[fillcolor=firebrick2]
         b[fillcolor=firebrick2]
         c[fillcolor=firebrick2]
-        d
+        d[color=firebrick2]
         e[fillcolor=firebrick2]
         f[fillcolor=firebrick2]
         a->d[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, everybody!\"]"]
@@ -200,14 +227,17 @@ static class Receivers
         c->f
     </div>
 </div>
-<pre><code class="lang-csharp">c.Send("chat/", Receivers.Children, Encoding.ASCII.GetBytes("Hello, babies!"));
+<div class="md">
+    ### Sending a message to all child nodes
+</div>
+<pre><code class="lang-csharp line-numbers">c.Send("chat/", Receivers.Children, Encoding.ASCII.GetBytes("Hello, babies!"));
 </code></pre>
 <div class="frame">
     <div class="caption">Message sinks down to all children nodes</div>
     <div class="dot">
         a
         b
-        c
+        c[color=firebrick2]
         d
         e[fillcolor=firebrick2]
         f[fillcolor=firebrick2]
@@ -220,8 +250,114 @@ static class Receivers
 <div class="md">
     # HTTP
 </div>
-<pre><code class="lang-csharp">var server = new HttpServer(node);</code></pre>
+<pre><code class="lang-csharp line-numbers">class HelloModule : SimHttpModule
+{
+    public HelloModule()
+    {
+        Get["/hello"] = _ => "Hello, world!";
+    }    
+}
+    
+var a = new Node("a");
+var server = new SimHttpServer(a);
+server.AddModule(new HelloModule());
+a.Listen("tcp://*:4242");
+
+//...
+
+var b = new Node("b");
+b.Connect(...);
+var handler = new SimHttpClientHandler(b);
+var client = new HttpClient(handler);
+var response = await client.GetAsync("http://f98f4e3a-9bd8-447f-aa00-25d0f5da8e10.sim/hello");
+</code></pre>
+<div class="frame full">
+    <div class="caption">1) HTTP Request</div>
+    <div class="horiz">
+        <div class="dot">
+            a[fillcolor=firebrick2]
+            b[color=firebrick2]
+            a->x->b[color=firebrick2 style=solid dir=back label="app/http/req:[...]"]
+            x->y
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th colspan="3">Message Details:</th></tr>
+            <tr><th>Hops</th><td>0</td><td></td></tr>
+            <tr><th>Life</th><td>64</td><td></td></tr>
+            <tr><th>SenderId</th><td>38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td><td></td></tr>
+            <tr><th>ReceiverId</th><td>f98f4e3a-9bd8-447f-aa00-25d0f5da8e10</td><td></td></tr>
+            <tr><th>Topic</th><td>app/http/req</td><td></td></tr>
+            <tr><th>Frame[0]</th><td>513864</td><td>Request ID</td></tr>
+            <tr>
+                <th>Frame[1]</th>
+                <td>
+                    <pre><code>GET /hello HTTP/1.1
+Host: afae6c370aba461fba9a81de622e8a6e.sim</code></pre>
+                </td>
+                <td>Request header</td>
+            </tr>
+        </table>
+    </div>
+</div>
+<div class="frame full">
+    <div class="caption">2) HTTP Response</div>
+    <div class="horiz">
+        <div class="dot">
+                a[color=firebrick2]
+                b[fillcolor=firebrick2]
+                a->x->b[color=firebrick2 style=solid dir=forward label="app/http/res:[...]"]
+                x->y
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th colspan="3">Message Details:</th></tr>
+            <tr><th>Hops</th><td>0</td><td></td></tr>
+            <tr><th>Life</th><td>64</td><td></td></tr>
+            <tr><th>SenderId</th><td>f98f4e3a-9bd8-447f-aa00-25d0f5da8e10</td><td></td></tr>
+            <tr><th>ReceiverId</th><td>38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td><td></td></tr>
+            <tr><th>Topic</th><td>app/http/res</td><td></td></tr>
+            <tr><th>Frame[0]</th><td>513864</td><td>Request ID</td></tr>
+            <tr>
+                <th>Frame[1]</th>
+                <td>
+                    <pre><code>HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Content-Length: 13</code></pre>
+                </td>
+                <td>Response header</td>
+            </tr>
+            <tr>
+                <th>Frame[2]</th>
+                <td>
+                    <pre><code>Hello, world!</code></pre>
+                </td>
+                <td>Response body</td>
+            </tr>
+        </table>
+    </div>
+</div>
 <div class="pb"></div>
+<div class="md">
+    # RPC
+</div>
+<pre><code class="lang-csharp line-numbers">interface ICalculator
+{
+    double Add(double lhs, double rhs);
+}
+
+class Calculator : ICalculator
+{
+    public double Add(double lhs, double rhs)
+    {
+        return lhs + rhs;
+    }
+}
+
+//...
+
+var node = new Node("a");
+</code></pre>
 <div class="md">
     # Scratchpad
 

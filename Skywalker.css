@@ -26,13 +26,23 @@ code {
     font-family: 'Roboto Mono', monospace !important;
     font-size: 0.7em;
 }
+.horiz {
+    display: flex;
+    justify-content: space-between;
+}
 .frame {
     display: inline-block;
     position: relative;
     border: 0.4em solid whitesmoke;
-    padding: 2em;
     margin: 0 0 1rem 0;
     border-radius: 0.5em;
+    page-break-inside: avoid;
+}
+.frame.full {
+    display: block;
+}
+.horiz > .frame:not(:first-child) {
+    margin-left: 1rem;
 }
 .frame > .caption {
     position: absolute;
@@ -42,8 +52,30 @@ code {
     top: -.3em; left: -.3em;
     border-radius: 0.5em;
 }
-.dot {
-    text-align: center;
+div.vr {
+    width: 0.5em;
+    background-color:whitesmoke; 
+}
+div.dot {
+    margin: 1em;
+}
+table.prop {
+    width: auto;
+    margin: 1em;
+    font-size: 0.5em;
+}
+table.prop th, td {
+    padding: 0 1em 0 0;
+}
+table.prop th {
+    font-weight: 400;
+}
+table.prop pre {
+    margin: 0 !important;
+    background-color: transparent !important;
+}
+table.prop code {
+    background-color: transparent !important;
 }
 .pb {
     page-break-after: always;
