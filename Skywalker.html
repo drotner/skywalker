@@ -128,43 +128,8 @@ struct Frame
     public byte[] Buffer;
 }    
 </code></pre>
-<pre><code class="lang-csharp line-numbers">// System-reserved topics
-static class SystemTopics
-{
-    public const string All = "system/";
-    public const string Beacon = "system/beacon/";
-    public const string Ping = "system/ping/";
-    public const string Pong = "system/pong/";
-}
-</code></pre>
-<pre><code class="lang-csharp line-numbers">foreach (var msg in node.Subscribe("some_topic/"))
-{
-    // Handle message
-}
-</code></pre>
-<pre><code class="lang-csharp line-numbers">class Node
-{
-    // ...
-
-    public void Send(string topic, Guid receiverId, params Frame[] frames)
-    {
-        // ...
-    }
-
-    // ...
-} 
-
-node.Send("some_topic/", receiverId, new byte[] {1,2,3});
-
-static class Receivers
-{
-    public static readonly Guid Ancestors = new Guid("00000000-0000-0000-0000-000000000000");
-    public static readonly Guid Everybody = new Guid("0F0F0F0F-0F0F-0F0F-0F0F-0F0F0F0F0F0F");
-    public static readonly Guid Children = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF");
-}
-</code></pre>
 <div class="md">
-    ### Sending a message to a specific receiver
+    ### Sending a message to a concrete receiver
 </div>
 <pre><code class="lang-csharp line-numbers">d.Send("chat/", new Guid("fff62e93-e793-49f9-ae54-ffff20cdae15"), Encoding.ASCII.GetBytes("Hello, e!"));
 </code></pre>
@@ -184,6 +149,16 @@ static class Receivers
         c->f
     </div>
 </div>
+<div class="md">
+    ### Relative Receivers
+</div>
+<pre><code class="lang-csharp line-numbers">static class Receivers
+{
+    public static readonly Guid Ancestors = new Guid("00000000-0000-0000-0000-000000000000");
+    public static readonly Guid Everyone = new Guid("0F0F0F0F-0F0F-0F0F-0F0F-0F0F0F0F0F0F");
+    public static readonly Guid Children = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF");
+}
+</code></pre>
 <div class="md">
     ### Sending a message to all ancestor nodes
 </div>
@@ -206,9 +181,9 @@ static class Receivers
     </div>
 </div>
 <div class="md">
-    ### Sending a message to everybody (broadcasting)
+    ### Sending a message to everyone (broadcasting)
 </div>
-<pre><code class="lang-csharp line-numbers">d.Send("chat/", Receivers.Everybody, Encoding.ASCII.GetBytes("Hello, everybody!"));
+<pre><code class="lang-csharp line-numbers">d.Send("chat/", Receivers.Everyone, Encoding.ASCII.GetBytes("Hello, everybody!"));
 </code></pre>
 <div class="frame">
     <div class="caption">Message is broadcasted to all reachable nodes</div>
@@ -247,6 +222,38 @@ static class Receivers
         c->f[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
     </div>
 </div>
+<div class="md">
+    ## Simple Ping Server and Client
+</div>
+<pre><code class="lang-csharp line-numbers">var server = new Node("server");
+
+var pingWorkerTask = Task.Run(() =>
+{
+    foreach (var ping in server.Receive("sys/ping/", announce: true))
+    {
+        var replyEndpoint = ping.Frames[0].AsString();
+        var pong = ping.Reply(replyEndpoint);
+        server.Send(pong);
+    }
+});
+
+server.Listen("tcp://*:4242");
+
+pingWorkerTask.Wait();
+</code></pre>
+<pre><code class="lang-csharp line-numbers">var client = new Node("client");
+client.Connect(...);
+
+var receiverId = new Guid("c8f9f1b7-b5ea-477e-bfd1-54a227c21d0a");
+var replyEndpoint = client.GetTempEndpoint();
+
+client.Send("sys/ping/", receiverId, Frame.FromString(replyEndpoint, Encoding.ASCII));
+
+if (client.TryReceiveOnce(replyEndpoint, TimeSpan.FromSeconds(20), out var msg))
+{
+    // pong received...
+}
+</code></pre>
 <div class="md">
     # HTTP
 </div>
@@ -338,26 +345,6 @@ Content-Length: 13</code></pre>
     </div>
 </div>
 <div class="pb"></div>
-<div class="md">
-    # RPC
-</div>
-<pre><code class="lang-csharp line-numbers">interface ICalculator
-{
-    double Add(double lhs, double rhs);
-}
-
-class Calculator : ICalculator
-{
-    public double Add(double lhs, double rhs)
-    {
-        return lhs + rhs;
-    }
-}
-
-//...
-
-var node = new Node("a");
-</code></pre>
 <div class="md">
     # Scratchpad
 
