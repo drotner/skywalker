@@ -15,7 +15,7 @@ pre {
     margin-top: 0 !important;
 }
 pre[class*=language-] {
-    background-color: whitesmoke;
+    background-color: #ececec;
     border-radius: 0.5em;
 }
 pre>code {
@@ -29,15 +29,15 @@ code {
 .frame {
     display: inline-block;
     position: relative;
-    border: 0.4em solid whitesmoke;
+    border: 0.6em solid #ececec;
     padding: 2em;
     margin: 0 0 1rem 0;
     border-radius: 0.5em;
 }
 .frame > .caption {
     position: absolute;
-    background-color: whitesmoke;
-    padding: .2em .3em;
+    background-color: #ececec;
+    padding: .4em .6em;
     font-size: 0.6em;
     top: -.3em; left: -.3em;
     border-radius: 0.5em;

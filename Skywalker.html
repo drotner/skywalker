@@ -26,6 +26,12 @@ DOCUMENT START
 </div>
 <div class="pb"></div>
 <div class="md">
+    # Table of Contents
+</div>
+<div id="toc"></div>
+<div class="pb"></div>
+<div id="content">
+<div class="md">
     # Introduction
     *Skywalker* is the code name for a new SIM architecture. As we are progressing towards Snow Sky we see that the requirements for SIM are going to change.
 
@@ -42,7 +48,7 @@ DOCUMENT START
 
     The following example demonstrates the creation of a new node:
 </div>
-<pre><code class="lang-csharp">var a = new Node("a");</code></pre>
+<pre><code class="lang-csharp line-numbers">var a = new Node("a");</code></pre>
 <div>
     <div class="frame">
         <div class="caption">Single node</div>
@@ -54,14 +60,14 @@ DOCUMENT START
 <div class="md">
     We named the node *a*. The node's name should be a human readable alias that can be used to recognize it later on. The actual identity of a node is a GUID. We can get to it using the node's *Id* property:
 </div>
-<pre><code class="lang-csharp">a.Id.Dump();</code></pre>
+<pre><code class="lang-csharp line-numbers">a.Id.Dump();</code></pre>
 <pre><code class="lang-text">Output:
 a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25
 </code></pre>
 <div class="md">
-    In the above example we didn't specify an Id, so the node was assigned a random one. In most cases we would like node instances to have static Ids that survive restarts and crashes, so typically we would get the Id from some kind of configuration and then assign it when we create the instance:
+    In the above example we didn't specify an Id, so the node was assigned a random one. In most cases we would like node instances to have static Ids that survive restarts and crashes, so typically we would get the Id from some kind of persisted configuration and then assign it when we create the instance:
 </div>
-<pre><code class="lang-csharp">var nodeName = Configuration.GetNodeName();
+<pre><code class="lang-csharp line-numbers">var nodeName = Configuration.GetNodeName();
 var nodeId = Configuration.GetNodeId();
 var a = new Node("a", nodeId);
 </code></pre>
@@ -69,7 +75,7 @@ var a = new Node("a", nodeId);
     ## Edges
     A single node just sits there and doesn't do very much. We can make the node listen for and accept connections from other nodes:
 </div>
-<pre><code class="lang-csharp">a.Listen("tcp://*:4242");</code></pre>
+<pre><code class="lang-csharp line-numbers">a.Listen("tcp://*:4242");</code></pre>
 <div class="md">
     We can now create a second node, *b*, and connect it to *a*:
 </div>
@@ -163,6 +169,24 @@ static class Receivers
     public static readonly Guid Children = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF");
 }
 </code></pre>
+<pre><code class="lang-csharp">b.Send("chat/", new Guid("0910ac13-1538-41d7-b6c1-567f3884ed74"), Encoding.ASCII.GetBytes("Hello, e!"));
+</code></pre>
+<div class="frame">
+    <div class="caption">Message is routed from b to e</div>
+    <div class="dot">
+        a
+        b[color=firebrick2]
+        c
+        d
+        e[fillcolor=firebrick2]
+        f
+        a->b[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, e!\"]"]
+        a->d
+        c->e[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, e!\"]"]
+        a->c[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, e!\"]"]
+        c->f
+    </div>
+</div>
 <pre><code class="lang-csharp">f.Send("chat/", Receivers.Ancestors, Encoding.ASCII.GetBytes("Hello, ancestors!"));
 </code></pre>
 <div class="frame">
@@ -173,7 +197,7 @@ static class Receivers
         c[fillcolor=firebrick2]
         d
         e
-        f
+        f[color=firebrick2]
         a->{b d}
         c->e
         edge[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
@@ -189,7 +213,7 @@ static class Receivers
         a[fillcolor=firebrick2]
         b[fillcolor=firebrick2]
         c[fillcolor=firebrick2]
-        d
+        d[color=firebrick2]
         e[fillcolor=firebrick2]
         f[fillcolor=firebrick2]
         a->d[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, everybody!\"]"]
@@ -207,7 +231,7 @@ static class Receivers
     <div class="dot">
         a
         b
-        c
+        c[color=firebrick2]
         d
         e[fillcolor=firebrick2]
         f[fillcolor=firebrick2]
@@ -231,18 +255,77 @@ static class Receivers
     ## Security/Encryption
     ## Skywalker in Snow Sky
     ## Offline Scenarios
+    ## NetMQ
+</div>
+<div class="frame">
+    <div class="caption">Snow Sky Configuration</div>
+    <div class="dot">
+        subgraph cluster_skyback {
+            label="Snow Sky Backend"
+            a
+        }
+
+        subgraph cluster_skyfront {
+            label="Snow Sky Frontend"
+            b
+        }
+    
+        subgraph cluster_onprem {
+            label="On-premise"
+            c d e
+            c->d
+            c->e
+            d->{f g h}
+            e->{i j}
+            k->{l m}
+        }
+    
+        a->b
+        b->c
+        b->k
+    </div>
+</div>
+<pre><code class="lang-csharp line-numbers">interface ICalculator
+{
+    double Add(double lhs, double rhs);    
+}
+
+class Calculator : ICalculator
+{
+    public double Add(double lhs, double rhs)
+    {
+        return lhs + rhs;
+    }
+}
+
+var a = new Node("a");
+var server = new RpcServer(a);
+server.Register<ICalculator>(new Calculator());
+a.Listen("tcp://*:4242");
+
+var b = new Node("b");
+b.Connect("tcp://a:4242");
+var client = new RpcClient(b);
+var calculator = client.CreateProxy<ICalculator>(a.Id);
+var result = calculator.Add(3, 8);
+result.Dump();
+</code></pre>
+<pre><code class="lang-text">Output:
+11.0
+</code></pre>
 </div>
 <!-- 
 ***************************************************************************************************
 DOCUMENT END
 ***************************************************************************************************
 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.8.6/showdown.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/1.8.1/viz.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/prism.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/components/prism-csharp.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/showdown/1.8.6/showdown.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/viz.js/1.8.1/viz.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/prism.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/components/prism-csharp.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/tocbot/4.1.1/tocbot.min.js"></script>
 <script src="Skywalker.js"></script>
 </body>
 </html>
