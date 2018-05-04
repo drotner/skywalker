@@ -44,7 +44,7 @@ code {
 .horiz > .frame:not(:first-child) {
     margin-left: 1rem;
 }
-.frame > .caption {
+.frame .caption {
     position: absolute;
     background-color: whitesmoke;
     padding: .2em .3em;
