@@ -6,7 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css" />
     <link rel="stylesheet" href="//cdn.rawgit.com/milligram/milligram/master/dist/milligram.min.css">
-    <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Roboto+Condensed:300,300i,400,400i,700,700i|Roboto+Mono" />
+    <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Roboto+Condensed:300,300i,400,400i,700,700i|Roboto+Mono:300,300i,400,400i,700,700i" />
     <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/themes/prism.min.css" />
     <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/prism/1.14.0/plugins/line-numbers/prism-line-numbers.min.css" />
     <link rel="stylesheet" href="Skywalker.css" />
@@ -33,6 +33,9 @@ DOCUMENT START
 <div id="content">
 <div class="md">
     # Introduction
+
+    ## Integrate, Configure, Transport
+
     *Skywalker* is the code name for a new SIM architecture. As we are progressing towards Snow Sky we see that the requirements for SIM are going to change.
 
     In order to support customer environments of varying sizes and complexity, we need to build a system that is both modular and flexible. We should allow the customer to run everything in a distributed fashion and at the same time provide a solution that feels unified and is easy to manage.
@@ -135,9 +138,19 @@ public struct Frame
 }    
 </code></pre>
 <div class="md">
+    As you can see, each message has a sender and a receiver, and an array of frames.
+</div>
+<div class="md">
+    ### Endpoints
+    TODO: Explain endpoints here...
+
+    ### Protocols
+    TODO: Explain protocols here...
+
+    ### Sending Messages
     To send a message, we can use one of the node's *Send(...)* methods. Let's send a simple message from *c* to *a*:
 </div>
-<pre><code class="lang-csharp line-numbers">c.Send("a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25", "app:chat/v1.0", "sandbox/chat/", Frame.FromString("Hello, a!"));
+<pre><code class="lang-csharp line-numbers">c.Send("a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25", "app:chat/v1.0@app/chat/", Frame.FromString("Hello, a!"));
 </code></pre>
 <div class="md">
     The first parameter is the *Id* of the intended receiver, in this case node *a*. 
@@ -167,8 +180,8 @@ public struct Frame
         </div>
         <div class="vr"></div>
         <table class="prop">
-            <tr><th>SenderId</th><td>38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td></tr>
-            <tr><th>ReceiverId</th><td>a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25</td></tr>
+            <tr><th>SenderId</th><td class="monospace">38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25</td></tr>
             <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, a!"</td></tr>
         </table>
@@ -182,6 +195,125 @@ public struct Frame
     A node doesn't know anything about the hierarchy above itself. Coincidentally, this example works because when a node wants to send a message to a receiver that it doesn't know the location of, it simply passes the message to its parent. In this case the intended receiver *is* the parent, so... problem solved!
 
     Unfortunately, communicating only with your parents and grandparents gets old really fast. We need to find a way to let the nodes send messages to receivers that are not above in the same branch. That would require some kind of routing, wouldn't it? Yes, it would. So, how does this work?
+
+</div>
+<div class="md">
+    ### Routing
+
+    #### Relative Receivers
+    There are a few hard-coded receiver ids that can be used to address nodes in relative positions to the sender node.
+</div>
+<pre><code class="lang-csharp line-numbers">static class Receivers
+{
+    // Addresses nodes that lie above the node in the same brach
+    public static readonly Guid Ancestors = new Guid("00000000-0000-0000-0000-000000000000");
+
+    // Addresses all nodes in the graph (including itself)
+    public static readonly Guid Everyone = new Guid("0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f");
+
+    // Addresses nodes that lie below the sender
+    public static readonly Guid Children = new Guid("ffffffff-ffff-ffff-ffff-ffffffffffff");
+}
+</code></pre>
+<div class="md">
+    Whenever a node receives a message, it will look at the *ReceiverId* and execute the following logic:
+    - If *ReceiverId* is equal to the node's *Id*, it will consume the message and **not** forward it to anyone else.
+    - If *ReceiverId* is equal to *Receivers.Ancestors*, it will consume the message and then forward it to its parent node.
+    - If *ReceiverId* is equal to *Receivers.Everyone*, it will consume the message and then forward it to both its parent and all children node.
+    - If *ReceiverId* is equal to *Receivers.Children*, it will consume the message and then forward it to all its children nodes. 
+
+    Let's have a look at some examples to illustrate this behavior.
+</div>
+<div class="md">
+    ##### Example 1: Sending a message to all ancestor nodes:
+</div>
+<pre><code class="lang-csharp line-numbers">f.Send(Receivers.Ancestors, "app:chat/v1.0@app/chat/", Frame.FromString("Hello, ancestors!"));
+</code></pre>
+<div class="frame">
+    <div class="horiz">
+        <div class="dot">
+            a[fillcolor=firebrick2]
+            b
+            c[fillcolor=firebrick2]
+            d
+            e
+            f[color=firebrick2]
+            a->{b d}
+            c->e
+            edge[dir=back style=solid color=firebrick2]
+            a->c
+            c->f
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">92ff112d-485d-4c3c-a8c1-0ca328c5882d</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">00000000-0000-0000-0000-000000000000</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[1]</th><td>"Hello, ancestors!"</td></tr>
+        </table>            
+    </div>
+</div>
+<div class="md">
+    ##### Example 2: Sending a message to everyone (broadcasting):
+</div>
+<pre><code class="lang-csharp line-numbers">d.Send(Receivers.Everyone, "app:chat/v1.0@app/chat/", Frame.FromString("Hello, everyone!"));
+</code></pre>
+<div class="frame">
+    <div class="horiz">
+        <div class="dot">
+            a[fillcolor=firebrick2]
+            b[fillcolor=firebrick2]
+            c[fillcolor=firebrick2]
+            d[color=firebrick2]
+            e[fillcolor=firebrick2]
+            f[fillcolor=firebrick2]
+            a->d[dir=back style=solid color=firebrick2]
+            edge[dir=forward style=solid color=firebrick2]
+            a->b
+            a->c
+            c->e
+            c->f
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[1]</th><td>"Hello, everyone!"</td></tr>
+        </table>            
+    </div>
+</div>
+<div class="md">
+    ##### Example 3: Sending a message to all child nodes:
+</div>
+<pre><code class="lang-csharp line-numbers">c.Send(Receivers.Children, "app:chat/v1.0@app/chat/", Frame.FromString("Hello, children!"));
+</code></pre>
+<div class="frame">
+    <div class="horiz">
+        <div class="dot">
+            a
+            b
+            c[color=firebrick2]
+            d
+            e[fillcolor=firebrick2]
+            f[fillcolor=firebrick2]
+            a->{b d}
+            c->e[dir=forward style=solid color=firebrick2]
+            a->c
+            c->f[dir=forward style=solid color=firebrick2]
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">c4ef0640-5171-44a7-95b6-db130b3dcb90</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">ffffffff-ffff-ffff-ffff-ffffffffffff</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[1]</th><td>"Hello, children!"</td></tr>
+        </table>            
+    </div>
+</div>
+<div class="md">
+    #### Specific Receivers
+    OK, so sending message to
 
     Let's have a look at what happens when a node connects to another. Here *e* connects to *c*:
 </div>
@@ -206,13 +338,13 @@ public struct Frame
         </div>
         <div class="vr"></div>
         <table class="prop">
-            <tr><th>SenderId</th><td>3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
-            <tr><th>ReceiverId</th><td>00000000-0000-0000-0000-000000000000</td></tr>
+            <tr><th>SenderId</th><td class="monospace">3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">00000000-0000-0000-0000-000000000000</td></tr>
             <tr><th>Frame[0]</th><td>"sys:dir/v1.0@sys/"</td></tr>
             <tr><th>Frame[1]</th><td>"beacon"</td></tr>
             <tr><th>Frame[1]</th><td>Id=3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c<br />
 Name=c<br />
-PKI=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
+PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
             </td></tr>
         </table>
     </div>
@@ -243,7 +375,7 @@ PKI=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 
     Let's send a message from *d* to *e*:
 </div>
-<pre><code class="lang-csharp line-numbers">d.Send("3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c", "app:chat/v1.0", "app/chat", Frame.FromString("Hello, e! Best regards, d."));
+<pre><code class="lang-csharp line-numbers">d.Send("3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c", "app:chat/v1.0@app/chat/", Frame.FromString("Hello, e!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -262,10 +394,10 @@ PKI=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
         </div>
         <div class="vr"></div>
         <table class="prop">
-            <tr><th>SenderId</th><td>02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
-            <tr><th>ReceiverId</th><td>3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
+            <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
             <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
-            <tr><th>Frame[1]</th><td>"Hello, e! Best regards, d."</td></tr>
+            <tr><th>Frame[1]</th><td>"Hello, e!"</td></tr>
         </table>            
     </div>
 </div>
@@ -289,16 +421,12 @@ PKI=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 var appChat = Task.Run(() =>
 {
     // Register an endpoint on the node and announce that we support the "app:chat/v1.0" protocol
-    var endpoint = e.RegisterEndpoint("sandbox/chat", "app:chat/v1.0");
-
-    // Iterate through all messages that we receieve on the endpoint.
-    // If the node shuts down, or cancellation is requested on cts, the
-    // enumerable will "yield break;" and the loop consequently ends...
-    foreach (var msg in endpoint.Receive(cts.Token))
+    if (e.TryRegisterEndpoint("app/chat", "app:chat/v1.0", out var endpoint, out var error))
     {
         // Iterate through all messages that we receieve on the endpoint.
-        // If the node shuts down, the enumerable will "yield break;" and the loop consequently ends...
-        foreach (var msg in endpoint.Receive())
+        // If the node shuts down, or cancellation is requested on cts, the
+        // enumerable will "yield break;" and the loop consequently ends...
+        foreach (var msg in endpoint.Receive(cts.Token))
         {
             // Yay, we got a message! Frame[1] should hold our greeting, read it as a string
             var greeting = msg.Frame[1].AsString();
@@ -317,87 +445,112 @@ var appChat = Task.Run(() =>
 // Wait until the module quits...
 appChat.Wait();
 </code></pre>
-<pre><code class="lang-text">Hello, e! Best regards, d.</code></pre>
+<pre><code class="lang-text">Hello, e!</code></pre>
+<div class="pb"></div>
 <div class="md">
-    ## Relative Receivers
+    # Dynamic Discovery
+    The sys:dir protocol allows us to do dynamic discovery. By *discovery* we mean the act of probing the graph for nodes that implement a protocol that we are interested in. For instance, if *b* wants to know all nodes that implement app:chat, we could run the following query:
 </div>
-<pre><code class="lang-csharp line-numbers">static class Receivers
+<pre><code class="lang-csharp line-numbers">// Get a temporary endpoint to receive replies on
+var replyEndpoint = d.GetTempEndpoint();
+
+// Broadcast the query to all nodes
+d.Send(Receivers.Everyone, "sys:dir/v1.0@sys/",
+    Frame.FromString("query"),
+    Frame.FromString("protocol=app:chat/v1.0"),
+    replyEndpoint);
+
+// We'll collect the ids of all responding nodes in this list
+var nodeIds = new List<Guid>();
+
+// Receive all replies that come back within the next two seconds
+foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
 {
-    public static readonly Guid Ancestors = new Guid("00000000-0000-0000-0000-000000000000");
-    public static readonly Guid Everyone = new Guid("0F0F0F0F-0F0F-0F0F-0F0F-0F0F0F0F0F0F");
-    public static readonly Guid Children = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF");
+    if (msg.Frame[1].AsString() == "match")
+    {
+        // Add the sender to the list
+        nodeIds.Add(msg.SenderId);
+    }
 }
+
+// nodeIds now contains the ids of all nodes that claim to implement the app:chat/v1.0 protocol.
 </code></pre>
 <div class="md">
-    ### Sending a message to all ancestor nodes
+    Or, since sys:dir is a required system protocol, the node already has a system module that does all that work for us:
 </div>
-<pre><code class="lang-csharp line-numbers">f.Send("chat/", Receivers.Ancestors, Encoding.ASCII.GetBytes("Hello, ancestors!"));
+<pre><code class="lang-csharp line-numbers">var queryResult = await d.Directory.QueryAsync("protocol=app:chat/v1.0", TimeSpan.FromSeconds(2)));
 </code></pre>
 <div class="frame">
-    <div class="caption">Message bubbles up to all ancestor nodes</div>
-    <div class="dot">
-        a[fillcolor=firebrick2]
-        b
-        c[fillcolor=firebrick2]
-        d
-        e
-        f[color=firebrick2]
-        a->{b d}
-        c->e
-        edge[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, ancestors!\"]"]
-        a->c
-        c->f
+    <div class="caption">1) d broadcasts the query</div>
+    <div class="horiz">
+        <div class="dot">
+            a[fillcolor=firebrick2]
+            b[fillcolor=firebrick2]
+            c[fillcolor=firebrick2]
+            d[color=firebrick2]
+            e[fillcolor=firebrick2]
+            f[fillcolor=firebrick2]
+            a->d[dir=back style=solid color=firebrick2]
+            edge[dir=forward style=solid color=firebrick2]
+            a->b
+            a->c
+            c->e
+            c->f
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f</td></tr>
+            <tr><th>Frame[0]</th><td>"sys:dir/v1.0@sys/"</td></tr>
+            <tr><th>Frame[1]</th><td>"query"</td></tr>
+            <tr><th>Frame[2]</th><td>"protocol=app:chat/v1.0"</td></tr>
+            <tr><th>Frame[3]</th><td>"sys/tmp/ae7216ljs/"</td></tr>
+        </table>            
+    </div>
+</div>
+<div class="frame">
+        <div class="caption">2) e and f send replies</div>
+    <div class="horiz">
+        <div class="dot">
+            a
+            b
+            c
+            d[fillcolor=firebrick2]
+            e[color=firebrick2]
+            f[color=firebrick2]
+            a->d[dir=forward style=solid color=firebrick2]
+            a->b
+            edge[dir=back style=solid color=firebrick2]
+            a->c
+            c->e
+            c->f
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">{senderId}</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
+            <tr><th>Frame[0]</th><td>"sys:dir/v1.0@sys/tmp/ae7216ljs/"</td></tr>
+            <tr><th>Frame[1]</th><td>"match"</td></tr>
+            <tr><th>Frame[2]</th><td>"app:chat/v1.0"</td></tr>
+        </table>            
     </div>
 </div>
 <div class="md">
-    ### Sending a message to everyone (broadcasting)
-</div>
-<pre><code class="lang-csharp line-numbers">d.Send("chat/", Receivers.Everyone, Encoding.ASCII.GetBytes("Hello, everybody!"));
-</code></pre>
-<div class="frame">
-    <div class="caption">Message is broadcasted to all reachable nodes</div>
-    <div class="dot">
-        a[fillcolor=firebrick2]
-        b[fillcolor=firebrick2]
-        c[fillcolor=firebrick2]
-        d[color=firebrick2]
-        e[fillcolor=firebrick2]
-        f[fillcolor=firebrick2]
-        a->d[dir=back style=solid color=firebrick2 label="chat/:[\"Hello, everybody!\"]"]
-        edge[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, everybody!\"]"]
-        a->b
-        a->c
-        c->e
-        c->f
-    </div>
-</div>
-<div class="md">
-    ### Sending a message to all child nodes
-</div>
-<pre><code class="lang-csharp line-numbers">c.Send("chat/", Receivers.Children, Encoding.ASCII.GetBytes("Hello, babies!"));
-</code></pre>
-<div class="frame">
-    <div class="caption">Message sinks down to all children nodes</div>
-    <div class="dot">
-        a
-        b
-        c[color=firebrick2]
-        d
-        e[fillcolor=firebrick2]
-        f[fillcolor=firebrick2]
-        a->{b d}
-        c->e[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
-        a->c
-        c->f[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
-    </div>
+    In this case, *e* and *f* implements app:chat/v1.0, and reply with a positive match.
 </div>
 <div class="pb"></div>
 <div class="md">
     # Scratchpad
 
-    ## Dynamic Discovery
-    ## Consumer-Driven Contracts
-    ## JSON Schema
+    ## Skywalker Service
+    ## System Protocols
+    ### Required
+    sys:dir
+    
+    ### Optional
+    sys:config
+
+    ## Testing
     ## Security/Encryption
     ## Skywalker in Snow Sky
     ## Offline Scenarios
@@ -431,34 +584,6 @@ appChat.Wait();
         b->k
     </div>
 </div>
-<pre><code class="lang-csharp line-numbers">interface ICalculator
-{
-    double Add(double lhs, double rhs);    
-}
-
-class Calculator : ICalculator
-{
-    public double Add(double lhs, double rhs)
-    {
-        return lhs + rhs;
-    }
-}
-
-var a = new Node("a");
-var server = new RpcServer(a);
-server.Register<ICalculator>(new Calculator());
-a.Listen("tcp://*:4242");
-
-var b = new Node("b");
-b.Connect("tcp://a:4242");
-var client = new RpcClient(b);
-var calculator = client.CreateProxy<ICalculator>(a.Id);
-var result = calculator.Add(3, 8);
-result.Dump();
-</code></pre>
-<pre><code class="lang-text">Output:
-11.0
-</code></pre>
 </div>
 <!-- 
 ***************************************************************************************************

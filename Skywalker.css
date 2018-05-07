@@ -28,6 +28,10 @@ code {
     font-family: 'Roboto Mono', monospace !important;
     font-size: 0.8em;
 }
+.monospace {
+    font-family: 'Roboto Mono', monospace !important;
+    font-size: 0.8em;
+}
 .horiz {
     display: flex;
     justify-content: space-between;
