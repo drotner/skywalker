@@ -233,12 +233,13 @@ PKI=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
     "3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c": {
         "edge": "tcp:4242#1",
         "name": "c",
-        "pki": "&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
+        "publicKey": "&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
     },
     ...
 }</code></pre>
 <div class="md">
-    This shows part node *a*'s routing table. We can see that we have an entry for node *c*, and that we now know which edge it is connected over. Whenever node *a* gets a message that is should be sent to node *c*, it knows which edge to forward the message to.
+    This shows part node *a*'s routing table. We can see that we have an entry for node *c*, and that we now know which edge it is connected over. Whenever node *a* gets a message that 
+    should be sent to node *c*, it knows which edge to forward the message to.
 
     Let's send a message from *d* to *e*:
 </div>
@@ -280,13 +281,20 @@ PKI=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 <div class="md">
     ## Modules
 
-    Protocols are handled by modules. Let's implement the "app:chat" module on node *e*. This is as simple as modules get!
+    Protocols are handled by modules. Here's a simple implementation of the "app:chat" module on node *e*.
 </div>
-<pre><code class="lang-csharp line-numbers">// Create an async task that executes the module
+<pre><code class="lang-csharp">var cts = new CancellationTokenSource();
+
+// Create an async task that executes the module
 var appChat = Task.Run(() =>
 {
-    // Try to register an endpoint on the node and announce that it supports the "app:chat/v1.0" protocol
-    if (e.TryRegisterEndpoint("sandbox/chat", "app:chat/v1.0", out var endpoint, out var error))
+    // Register an endpoint on the node and announce that we support the "app:chat/v1.0" protocol
+    var endpoint = e.RegisterEndpoint("sandbox/chat", "app:chat/v1.0");
+
+    // Iterate through all messages that we receieve on the endpoint.
+    // If the node shuts down, or cancellation is requested on cts, the
+    // enumerable will "yield break;" and the loop consequently ends...
+    foreach (var msg in endpoint.Receive(cts.Token))
     {
         // Iterate through all messages that we receieve on the endpoint.
         // If the node shuts down, the enumerable will "yield break;" and the loop consequently ends...
@@ -304,14 +312,14 @@ var appChat = Task.Run(() =>
         // Failed to register endpoint.
         error.Dump();
     }
-});
+}, cts.Token);
 
 // Wait until the module quits...
 appChat.Wait();
 </code></pre>
 <pre><code class="lang-text">Hello, e! Best regards, d.</code></pre>
 <div class="md">
-    ### Relative Receivers
+    ## Relative Receivers
 </div>
 <pre><code class="lang-csharp line-numbers">static class Receivers
 {
@@ -381,128 +389,6 @@ appChat.Wait();
         c->e[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
         a->c
         c->f[dir=forward style=solid color=firebrick2 label="chat/:[\"Hello, babies!\"]"]
-    </div>
-</div>
-<div class="md">
-    ## Simple Ping Server and Client
-</div>
-<pre><code class="lang-csharp line-numbers">var server = new Node("server");
-
-var pingWorkerTask = Task.Run(() =>
-{
-    foreach (var ping in server.Receive("sys/ping/", announce: true))
-    {
-        var replyEndpoint = ping.Frames[0].AsString();
-        var pong = ping.Reply(replyEndpoint);
-        server.Send(pong);
-    }
-});
-
-server.Listen("tcp://*:4242");
-
-pingWorkerTask.Wait();
-</code></pre>
-<pre><code class="lang-csharp line-numbers">var client = new Node("client");
-client.Connect(...);
-
-var receiverId = new Guid("c8f9f1b7-b5ea-477e-bfd1-54a227c21d0a");
-var replyEndpoint = client.GetTempEndpoint();
-
-client.Send("sys/ping/", receiverId, Frame.FromString(replyEndpoint, Encoding.ASCII));
-
-if (client.TryReceiveOnce(replyEndpoint, TimeSpan.FromSeconds(20), out var msg))
-{
-    // pong received...
-}
-</code></pre>
-<div class="md">
-    # HTTP
-</div>
-<pre><code class="lang-csharp line-numbers">class HelloModule : SimHttpModule
-{
-    public HelloModule()
-    {
-        Get["/hello"] = _ => "Hello, world!";
-    }    
-}
-    
-var a = new Node("a");
-var server = new SimHttpServer(a);
-server.AddModule(new HelloModule());
-a.Listen("tcp://*:4242");
-
-//...
-
-var b = new Node("b");
-b.Connect(...);
-var handler = new SimHttpClientHandler(b);
-var client = new HttpClient(handler);
-var response = await client.GetAsync("http://f98f4e3a-9bd8-447f-aa00-25d0f5da8e10.sim/hello");
-</code></pre>
-<div class="frame full">
-    <div class="caption">1) HTTP Request</div>
-    <div class="horiz">
-        <div class="dot">
-            a[fillcolor=firebrick2]
-            b[color=firebrick2]
-            a->x->b[color=firebrick2 style=solid dir=back label="app/http/req:[...]"]
-            x->y
-        </div>
-        <div class="vr"></div>
-        <table class="prop">
-            <tr><th colspan="3">Message Details:</th></tr>
-            <tr><th>Hops</th><td>0</td><td></td></tr>
-            <tr><th>Life</th><td>64</td><td></td></tr>
-            <tr><th>SenderId</th><td>38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td><td></td></tr>
-            <tr><th>ReceiverId</th><td>f98f4e3a-9bd8-447f-aa00-25d0f5da8e10</td><td></td></tr>
-            <tr><th>Topic</th><td>app/http/req</td><td></td></tr>
-            <tr><th>Frame[0]</th><td>513864</td><td>Request ID</td></tr>
-            <tr>
-                <th>Frame[1]</th>
-                <td>
-                    <pre><code>GET /hello HTTP/1.1
-Host: afae6c370aba461fba9a81de622e8a6e.sim</code></pre>
-                </td>
-                <td>Request header</td>
-            </tr>
-        </table>
-    </div>
-</div>
-<div class="frame full">
-    <div class="caption">2) HTTP Response</div>
-    <div class="horiz">
-        <div class="dot">
-                a[color=firebrick2]
-                b[fillcolor=firebrick2]
-                a->x->b[color=firebrick2 style=solid dir=forward label="app/http/res:[...]"]
-                x->y
-        </div>
-        <div class="vr"></div>
-        <table class="prop">
-            <tr><th colspan="3">Message Details:</th></tr>
-            <tr><th>Hops</th><td>0</td><td></td></tr>
-            <tr><th>Life</th><td>64</td><td></td></tr>
-            <tr><th>SenderId</th><td>f98f4e3a-9bd8-447f-aa00-25d0f5da8e10</td><td></td></tr>
-            <tr><th>ReceiverId</th><td>38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td><td></td></tr>
-            <tr><th>Topic</th><td>app/http/res</td><td></td></tr>
-            <tr><th>Frame[0]</th><td>513864</td><td>Request ID</td></tr>
-            <tr>
-                <th>Frame[1]</th>
-                <td>
-                    <pre><code>HTTP/1.1 200 OK
-Content-Type: text/plain; charset=utf-8
-Content-Length: 13</code></pre>
-                </td>
-                <td>Response header</td>
-            </tr>
-            <tr>
-                <th>Frame[2]</th>
-                <td>
-                    <pre><code>Hello, world!</code></pre>
-                </td>
-                <td>Response body</td>
-            </tr>
-        </table>
     </div>
 </div>
 <div class="pb"></div>
