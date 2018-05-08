@@ -49,7 +49,7 @@ DOCUMENT START
     ## Nodes
     At the heart of the Skywalker architecture is the *Node* class. This class implements the fundamental protocol that is used for communication throughout the system.
 
-    The following example demonstrates the creation of a new node:
+    Let's start by creating a node:
 </div>
 <pre><code class="lang-csharp line-numbers">var a = new Node("a");</code></pre>
 <div class="frame">
@@ -57,7 +57,10 @@ DOCUMENT START
         a
     </div>
 </div>
-<pre><code class="lang-csharp">var b = new Node("b");
+<div class="md">
+    OK, so now we have a single node named *a*. Let's create a second one named *b*:
+</div>
+<pre><code class="lang-csharp line-numbers">var b = new Node("b");
 </code></pre>
 <div class="frame">
     <div class="dot">
@@ -65,22 +68,29 @@ DOCUMENT START
     </div>
 </div>
 <div class="md">
-    ## Edges
+    At this point, these nodes are islands. They do not know of each other, and there is no way for them to communicate. Let's fix that!
 </div>
-<pre><code class="lang-csharp">a.Listen("tcp://localhost:4242");
-b.Connect("tcp://localhost:4242");
-</code></pre>
+<div class="md">
+    ## Edges
+
+    Nodes can connect to each other to form networks. First, we make *a* listen and accept connections on TCP/IP port 4242:
+</div>
+<pre><code class="lang-csharp line-numbers">a.Listen("tcp://localhost:4242");</code></pre>
+<div class="md">
+    And then we connect *b* to *a*:
+</div>
+<pre><code class="lang-csharp line-numbers">b.Connect("tcp://localhost:4242");</code></pre>
 <div class="frame">
-    <div class="dot">
+<div class="dot">
         a->b[label="tcp:4242#0"]
     </div>
 </div>
 <div class="md">
-    Now, *b* is connected to *a* over TCP/IP. We call connections such as these *edges*. Observe that the parent node, here *a*, will assign each edge a unique *handle*. In this case *"tcp:4242#0"*, which tells us that this is the first TCP/IP connection. If another node connects to *a*, the resulting edge would get the handle *"tcp:4242#1"*, the next edge *"tcp:4242#2"*, and so on.
+    Good! *b* is now connected to *a* over TCP/IP. We call connections such as these *edges*. Observe that the parent node, here *a*, will assign each edge a unique *handle*. In this case *"tcp:4242#0"*, which tells us that this is the first TCP/IP connection. If another node connects to *a*, the resulting edge would get the handle *"tcp:4242#1"*, the next edge *"tcp:4242#2"*, and so on.
 
-    Here, we are running all the nodes on the same host (in the same process, even), but as you probably have already infered, nodes can run on different machines and connect to each other over TCP/IP.
+    Here, we are running all the nodes int the same process, but as you probably have already infered, nodes can run on different machines and connect to each other over TCP/IP. For simplicity's sake, we'll continue running the nodes in the same process. Just keep in mind that there is nothing keeping us from distributing nodes across machines in our network.
 
-    So far we have created two nodes and given them names. Names are good for human readability, but that that is also all they are ever used for. In fact, there is nothing stopping us from creating multiple nodes with the same name. It is not a good idea to do so, but the system makes no effort to prohibit such a scenario. Thus, we need a more precise way to uniquely address a particular node. For that, we use the node's *Id*:
+    So far we have created two nodes and given them names. Names are good for human readability, but that that is also all they are ever used for. In fact, there is nothing stopping us from creating multiple nodes with the same name. It is not a good idea to do so, but the system makes no effort to prohibit such a scenario. Thus, we need a more precise way to address a particular node. For that, we use the node's *Id*:
 </div>
 <pre><code class="lang-csharp line-numbers">a.Id.Dump();
 b.Id.Dump();
@@ -89,7 +99,7 @@ b.Id.Dump();
 c4ef0640-5171-44a7-95b6-db130b3dcb90
 </code></pre>
 <div class="md">
-    As you can see, we use GUIDs for node Ids. When we created the above nodes we did not specify their Ids, so they simply generated their own at random. Generally, in production we would like a node's Id to be static and survive system restarts and crashes, so we would probably store it in some kind of durable configuration and pass it in during startup.
+    As you can see, we use GUIDs for node Ids. When we created the above nodes we did not specify their Ids, so they simply generated random ones. Generally, in production we would like a node's Id to be static and survive system restarts and crashes, so we would probably store it in some kind of durable configuration and pass it in during startup.
 
     OK, let's add some more nodes and connect them to get a more interesting topology to work with:
 </div>
@@ -118,6 +128,8 @@ f.Connect("inproc://c");
     </div>
 </div>
 <div class="md">
+    Nodes can have 0-1 parent, and 0-n children. Also, there can be no cycles in the graph, so we're constrained to form tree topologies. Note that to save space, the graph illustrations in this document is laid out from left to right, but we're still talking about going up and down the branches in the tree. *Just remember that left is up, and right is down, and that branches go from top to bottom.*
+
     Observe that node *c* is listening on the *inproc* transport. This is an in-process transport that can be used to connect nodes that are running in the same host process. The motivation for having such a transport is to avoid unnecessary round-trips to the loopback interface. Other than that, an *inproc* edge behaves exactly like a *tcp* edge, and nodes should not care about which kind of transport they are connected over.
 </div>
 <div class="md">
@@ -138,30 +150,87 @@ public struct Frame
 }    
 </code></pre>
 <div class="md">
-    As you can see, each message has a sender and a receiver, and an array of frames.
+    As you can see, a message has a sender and a receiver, and an array of frames. A *Frame* is simply a wrapper for a byte buffer, and we can use frames to send any kind of data that we like. For frames, the following rules apply:
+    - Frame[0] is system reserved. More on that shortly...
+    - Frame[1-n] are free for us to use for whatever we want to send.
+
+    The reason we wrap the frame buffers in a struct is that it makes it easier to provide utility methods to construct and deconstruct data frames:
+</div>
+<pre><code class="lang-csharp line-numbers">// Construct some frames...
+var utf8Frame = Frame.From("Hello, this is some text!"); // Default encoding is UTF-8
+var asciiFrame = Frame.From("Hello, this is ASCII!", Encoding.ASCII);
+var jsonFrame = Frame.Json(new { Message = "Hello, this is a JSON object!" }, Encoding.UTF8);
+
+// Deconstruction
+var utf8Text = utf8Frame.AsString(); // Default encoding is UTF-8
+var asciiText = asciiFrame.AsString(Encoding.ASCII);
+var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
+</code></pre>
+<div class="md">
+    Et cetera, you get the idea...
 </div>
 <div class="md">
-    ### Endpoints
-    TODO: Explain endpoints here...
+    ### Endpoints and Protocols
+    OK, so before we start sending messages we need to understand *endpoints* and *protocols*. The fact is that nodes won't accept just any random messages that you throw at them. For a node to be ready to receive anything, it needs to open an endpoint and start listening for incoming messages on it. An endpoint is very much like a local URI. For instance, a node can open the endpoint "sandbox/chat".
+    
+    Right, now we can address that particular endpoint on that particular node. This is exactly what Frame[0] is reserved for. When we construct the message, we specify which endpoint we want to reach as an ASCII encoded string in this frame:
+</div>
+<div class="frame">
+    <table class="prop">
+        <tr><th>SenderId</th><td class="monospace">{senderId}</td></tr>
+        <tr><th>ReceiverId</th><td class="monospace">{receiverId}</td></tr>
+        <tr><th>Frame[0]</th><td>"sandbox/chat/"</td></tr>
+    </table>
+</div>
+<div class="md">
+    Nice, so now we're ready to send the message? No, not quite yet! If we were to send this message, the node would know which endpoint it should go to, but the endpoint wouldn't have any idea how to interpret it. For that, we have *protocols*!
 
-    ### Protocols
-    TODO: Explain protocols here...
+    When a node opens an endpoint it also has to specify one or more protocols that the endpoint supports. OK then, so what exactly is a protocol? Well, first of all, a protocol has a name and a version. We can specify a protocol using a string in the following format:
 
+        {name}/{version}
+
+    For example, if there is a protocol called "app:chat", and the endpoint supports version 1.0 of that, we would use the following string:
+
+        app:chat/v1.0
+
+    There's of course more to a protocol than its name and version. When a developer designs a protocol, there will be assumptions on what kinds of messages are acceptable, how messages look like, the order in which they can be exchanged, and so on. This is implemented in the code that actually runs behind the endpoint, and we'll have a look at an example of that later on.
+
+    Good. Now the node has opened an endpoint and specified that it supports the *app:chat/v1.0* protocol. We can amend our message and specify which protocol we want to speak *at* the given endpoint:
+</div>
+<div class="frame">
+    <table class="prop">
+        <tr><th>SenderId</th><td class="monospace">{senderId}</td></tr>
+        <tr><th>ReceiverId</th><td class="monospace">{receiverId}</td></tr>
+        <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
+    </table>
+</div>
+<div class="md">
+    Before we move along, here are some constraints. There will be more, but these are what we have for now:
+    - An endpoint is a sequence of one or more path segments separated by a '/' character.
+    - An endpoint always ends with a trailing slash. If you forget to specify a trailing slash, one will be added for you by the system.
+    - Valid characters for endpoints are alphanumeric characters + '/' and '-'.
+    - The *sys/* endpoint is reserved by the system, and you cannot open it or any other endpoint under it.
+    - A protocol name is a sequence of one or more path segments separated by a ':' character.
+    - After the protocol name comes a trailing '/' character and then the version.
+    - The protocol version is in the format "v{major}.{minor}".
+    - There are a number of required "sys:*" protocols that live behind the *sys/* endpoint. These are already implemented by the *Node* class.
+
+    Awesome, we're finally ready to send the message!
+</div>
+<div class="md">
     ### Sending Messages
     To send a message, we can use one of the node's *Send(...)* methods. Let's send a simple message from *c* to *a*:
 </div>
-<pre><code class="lang-csharp line-numbers">c.Send("a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25", "app:chat/v1.0@app/chat/", Frame.FromString("Hello, a!"));
+<pre><code class="lang-csharp line-numbers">c.Send("a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25", "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, a!"));
 </code></pre>
 <div class="md">
     The first parameter is the *Id* of the intended receiver, in this case node *a*. 
 
-    The second parameter denote the *protocol* that we are using for communication. A *protocol* is a specification over the kinds of messages that can be exchanged and the order in which they should be sent etc. In this example we are using version 1.0 of the imaginary protocol "app:chat". The specification for this protocol is that any node can send a message to it, and that the first "user frame" should contain a text message encoded as UTF-8.
+    The second parameter is the required protocol/endpoint definition that will go into Frame[0] of the message. Here we have specified that we want to talk version 1.0 of our imaginary protocol *app:chat* at the endpoint *sandbox/chat/*.
 
-    The third parameter denote the *endpoint* that the receiver should receive the message on. Nodes can register endpoints and specify which protocols are valid for them. In this case, we're assuming that node *a* has registered the endpoint "sandbox/chat/" and that it supports version 1.0 of the "app:chat" protocol.
+    Lastly, we have a params array of additional "user frames" to send with the message. In this example, we are sending a single frame of text. The *Frame* type has a number of static convenience methods to construct common frame types. Here we are using *From(...)* to create a simple text frame using the default encoding (UTF-8).
 
-    Lastly, we have a params array of additional "user frames" to send with the message. In this example, we are sending a single frame of text. The *Frame* type has a number of static convenience methods to construct common frame types. Here we are using *FromString(...)* to create a simple text frame using the default encoding.
-
-    The following illustration depicts the message exchange caused by the method call. The sender node has a red outline, while receiving nodes have been "triggered" and are now red. Red arrows show the flow of the message. The message details can be found on the right side of the illustration.
+    The following illustration depicts the message exchange caused by the method call. The sender node has a red outline, while receiving nodes have been "triggered" and are now red. Red arrows show the flow of the message. The message details can be found on the right side of the illustration. This is the convention that we are going to use throughout this document to show message flows.
 </div>
 <div class="frame">
     <div class="horiz">
@@ -188,17 +257,18 @@ public struct Frame
     </div>
 </div>
 <div class="md">
-    Observe that *Frame[0]* is system reserved and will always contain the *protocol* and *endpoint* definition of the message.
+    Observe that we can find the protocol/endpoint definition in *Frame[0]*. *Frame[1]* is the first *user frame*, and it contains the text that we want to send.
     
     OK, so how does *c* know where to send the message? Well, actually it doesn't!
     
-    A node doesn't know anything about the hierarchy above itself. Coincidentally, this example works because when a node wants to send a message to a receiver that it doesn't know the location of, it simply passes the message to its parent. In this case the intended receiver *is* the parent, so... problem solved!
+    A node doesn't know anything about the hierarchy above itself. Coincidentally, this example works because when a node wants to send a message to a receiver that it doesn't know the location of, it simply passes the message to its parent. In this case the intended receiver actually *is* the parent, so... problem solved!
 
-    Unfortunately, communicating only with your parents and grandparents gets old really fast. We need to find a way to let the nodes send messages to receivers that are not above in the same branch. That would require some kind of routing, wouldn't it? Yes, it would. So, how does this work?
+    Unfortunately, communicating only with your parents and grandparents gets old really fast. We need to find a way to let the nodes send messages to receivers that are not above in the same branch. That would require some kind of routing, wouldn't it? Yes, it would. So, how would that work?
 
 </div>
 <div class="md">
     ### Routing
+    Routing is the process in which the nodes in the graph select a path for a message, so that it can reach its intended receiver. Well, actually, we should say "receiver**s**", because  some messages will actually be consumed by multiple nodes. This is the simplest kind of routing, and we'll have a look at that first.
 
     #### Relative Receivers
     There are a few hard-coded receiver ids that can be used to address nodes in relative positions to the sender node.
@@ -212,22 +282,22 @@ public struct Frame
     public static readonly Guid Everyone = new Guid("0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f");
 
     // Addresses nodes that lie below the sender
-    public static readonly Guid Children = new Guid("ffffffff-ffff-ffff-ffff-ffffffffffff");
+    public static readonly Guid Descendants = new Guid("ffffffff-ffff-ffff-ffff-ffffffffffff");
 }
 </code></pre>
 <div class="md">
     Whenever a node receives a message, it will look at the *ReceiverId* and execute the following logic:
     - If *ReceiverId* is equal to the node's *Id*, it will consume the message and **not** forward it to anyone else.
     - If *ReceiverId* is equal to *Receivers.Ancestors*, it will consume the message and then forward it to its parent node.
-    - If *ReceiverId* is equal to *Receivers.Everyone*, it will consume the message and then forward it to both its parent and all children node.
-    - If *ReceiverId* is equal to *Receivers.Children*, it will consume the message and then forward it to all its children nodes. 
+    - If *ReceiverId* is equal to *Receivers.Everyone*, it will consume the message and then forward it to both its parent and all children nodes.
+    - If *ReceiverId* is equal to *Receivers.Descendants*, it will consume the message and then forward it to all its children nodes. 
 
     Let's have a look at some examples to illustrate this behavior.
 </div>
 <div class="md">
-    ##### Example 1: Sending a message to all ancestor nodes:
+    Example 1: Sending a message to all ancestor nodes:
 </div>
-<pre><code class="lang-csharp line-numbers">f.Send(Receivers.Ancestors, "app:chat/v1.0@app/chat/", Frame.FromString("Hello, ancestors!"));
+<pre><code class="lang-csharp line-numbers">f.Send(Receivers.Ancestors, "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, ancestors!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -248,15 +318,15 @@ public struct Frame
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">92ff112d-485d-4c3c-a8c1-0ca328c5882d</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">00000000-0000-0000-0000-000000000000</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, ancestors!"</td></tr>
         </table>            
     </div>
 </div>
 <div class="md">
-    ##### Example 2: Sending a message to everyone (broadcasting):
+    Example 2: Sending a message to everyone (broadcasting):
 </div>
-<pre><code class="lang-csharp line-numbers">d.Send(Receivers.Everyone, "app:chat/v1.0@app/chat/", Frame.FromString("Hello, everyone!"));
+<pre><code class="lang-csharp line-numbers">d.Send(Receivers.Everyone, "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, everyone!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -278,15 +348,15 @@ public struct Frame
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, everyone!"</td></tr>
         </table>            
     </div>
 </div>
 <div class="md">
-    ##### Example 3: Sending a message to all child nodes:
+    Example 3: Sending a message to all child nodes:
 </div>
-<pre><code class="lang-csharp line-numbers">c.Send(Receivers.Children, "app:chat/v1.0@app/chat/", Frame.FromString("Hello, children!"));
+<pre><code class="lang-csharp line-numbers">c.Send(Receivers.Descendants, "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, children!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -306,14 +376,17 @@ public struct Frame
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">c4ef0640-5171-44a7-95b6-db130b3dcb90</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">ffffffff-ffff-ffff-ffff-ffffffffffff</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, children!"</td></tr>
         </table>            
     </div>
 </div>
 <div class="md">
+    You can see that routing these kind of messages does not require that the nodes have much knowledge of the graph around it. But what if we want to send a message that is on a completely different branch?
+</div>
+<div class="md">
     #### Specific Receivers
-    OK, so sending message to
+    It should be quite obvious that routing a message to an arbitrary node often requires the intermediate nodes to have some understanding of how the graph is connected. How can we bring that knowledge to them?
 
     Let's have a look at what happens when a node connects to another. Here *e* connects to *c*:
 </div>
@@ -350,15 +423,15 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
     </div>
 </div>
 <div class="md">
-    The "beacon" message is part of the "sys:dir" protocol (system directory). This protocol is one of several system protocols that all nodes are required to support, all of which start with "sys:", and all of which live at the reserved "sys/" endpoint. The *Node* class already implements all of them, so this is nothing we have to worry about.
+    The "beacon" message is part of the *sys:dir* protocol (system directory). This protocol is one of several system protocols that all nodes are required to support, all of which start with "sys:", and all of which live at the reserved "sys/" endpoint. The *Node* class already implements all of them, so this is nothing we have to worry about.
 
-    Looking at the message details we can see that the ReceiverId is an empty GUID (00000000-0000-0000-0000-000000000000). Using this ReceiverId basically means "Send this message to all my ancestors". Consequently, we can see that both nodes *c* and *a* has received the message. The rationale behind this special Id is that is all zeroes and therefore has no "weight". Thus it will eventually bubble or float up to the surface.
+    Looking at the message details we can see that *ReceiverId* == *Receivers.Ancestors*, so this message should float up the branch and eventually reach the root node. Along the way, all ancestor nodes should also consume the message. We can see from the illustration that this is exactly the case.
 
-    Along with the beacon, the node also sends information about its name and public key (to be used for encrypted communication). The "sys:dir" module will keep this information and maintain a routing table that contains information about all nodes below it.
-
-    As soon as the connecting node has sent its own beacon message, it will loop through its own routing table and send beacon messages for all its descendants as well. This way, all nodes will build a complete registry of its descendant nodes.
-
-    A node's routing table is a dictionary that looks something like this:
+    The beacon message also contains information about the node's name and public key (to be used for encrypted communication). The *sys:dir* module that is running in all ancestor nodes will consume this information and keep it a routing table for look-up later.
+    
+    As soon as the connecting node has sent its own beacon message, it will loop through its own routing table and send beacon messages for all its descendants as well. This way, the *sys:dir* module will build a complete picture of what nodes are beneath it.
+    
+    The routing table is a kind of dictionary that looks something like this:
 </div>
 <pre><code class="lang-json">{
     ...,
@@ -375,7 +448,7 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 
     Let's send a message from *d* to *e*:
 </div>
-<pre><code class="lang-csharp line-numbers">d.Send("3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c", "app:chat/v1.0@app/chat/", Frame.FromString("Hello, e!"));
+<pre><code class="lang-csharp line-numbers">d.Send("3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c", "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, e!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -386,23 +459,23 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
             d[color=firebrick2]
             e[fillcolor=firebrick2]
             f
-            a->b
+            a->b[label="tcp:4242#1"]
             a->d[dir=back style=solid color=firebrick2 label="tcp:4242#1"]
             c->e[dir=forward style=solid color=firebrick2 label="inproc#0"]
             a->c[dir=forward style=solid color=firebrick2 label="tcp:4242#2"]
-            c->f
+            c->f[label="inproc#1"]
         </div>
         <div class="vr"></div>
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@app/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, e!"</td></tr>
         </table>            
     </div>
 </div>
 <div class="md">
-    So, here we can see the following flow:
+    Right, here we can observe the following flow:
     1. *d*, which does not know where *e* is located, sent the message to *a* because it is *d*'s parent. 
     2. The message was not ment for *a*, so it looked in its routing table, found an entry, and then forwarded the message down the correct edge to *c*. 
     3. *c* in turn followed the same procedure as *a*, and then forwarded it to *e*.
@@ -456,8 +529,8 @@ var replyEndpoint = d.GetTempEndpoint();
 
 // Broadcast the query to all nodes
 d.Send(Receivers.Everyone, "sys:dir/v1.0@sys/",
-    Frame.FromString("query"),
-    Frame.FromString("protocol=app:chat/v1.0"),
+    Frame.From("query"),
+    Frame.From("protocol=app:chat/v1.0"),
     replyEndpoint);
 
 // We'll collect the ids of all responding nodes in this list
@@ -541,6 +614,9 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
 <div class="pb"></div>
 <div class="md">
     # Scratchpad
+
+    ## Patterns
+    Describe common patterns
 
     ## Skywalker Service
     Web UI (connect node inproc to host node and use protocols to get/set config options on other nodes)
