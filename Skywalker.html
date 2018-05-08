@@ -20,7 +20,7 @@ DOCUMENT START
 -->
 <div class="md">
     # Project Skywalker
-    #### Design Document
+    #### Design Document v1.0
 
     Author: Rolf Lunder
 </div>
@@ -42,14 +42,23 @@ DOCUMENT START
 </div>
 <div class="pb"></div>
 <div class="md">
-    # Basic Building Blocks
+    # Fundamental Building Blocks
 
-    In this chapter, we are going sketch up the basic building blocks that will make such a system possible to implement.
+    In this chapter, we are going sketch up the fundamental building blocks that will make it possible for us to build a modular and flexible system that can evolve over time. It is going to be fairly technical, and we're going to use a lot of pseudo-code to explain the concepts. In order to make everything more digestable, however, we are going accompany the code with diagrams that visualize the results. Hopefully, this will enable even those that do not read code fluently to tag along.
 
+    Before we start, I would like to warn you that we will start our journey at quite a low level. There is a reason for that. I want to make sure that we establish a solid understanding of the fundamentals of the design before we start looking at the broader picture. Everyone knowing the basics well will hopefully hinder misunderstandings and promote productive and interesting disussions.
+
+    So, be warned and be patient. It will all come together in the end.
+
+    Let's take a deep dive...
+</div>
+<div class="md">
     ## Nodes
-    At the heart of the Skywalker architecture is the *Node* class. This class implements the fundamental protocol that is used for communication throughout the system.
+    At the heart of the new SIM design is the *Node* class. This class provides everything we need to compose complex and distributed systems. It is the glue in the architecture, and most of the code running in SIM will probably share an intimate relashionship with it.
 
-    Let's start by creating a node:
+    I believe there's no better way to explain what a node is than to show how it actually works, so let's do just that. Of course, none of this actually exist yet, but to aid the explanation the rest of this section is written in a tutorial-like style.
+
+    We begin by creating a node:
 </div>
 <pre><code class="lang-csharp line-numbers">var a = new Node("a");</code></pre>
 <div class="frame">
@@ -71,13 +80,11 @@ DOCUMENT START
     At this point, these nodes are islands. They do not know of each other, and there is no way for them to communicate. Let's fix that!
 </div>
 <div class="md">
-    ## Edges
-
-    Nodes can connect to each other to form networks. First, we make *a* listen and accept connections on TCP/IP port 4242:
+    Nodes can connect to each other and form networks. First, we make *a* listen and accept connections on TCP/IP port 4242:
 </div>
 <pre><code class="lang-csharp line-numbers">a.Listen("tcp://localhost:4242");</code></pre>
 <div class="md">
-    And then we connect *b* to *a*:
+    Then, connect *b* to *a*:
 </div>
 <pre><code class="lang-csharp line-numbers">b.Connect("tcp://localhost:4242");</code></pre>
 <div class="frame">
@@ -86,9 +93,14 @@ DOCUMENT START
     </div>
 </div>
 <div class="md">
-    Good! *b* is now connected to *a* over TCP/IP. We call connections such as these *edges*. Observe that the parent node, here *a*, will assign each edge a unique *handle*. In this case *"tcp:4242#0"*, which tells us that this is the first TCP/IP connection. If another node connects to *a*, the resulting edge would get the handle *"tcp:4242#1"*, the next edge *"tcp:4242#2"*, and so on.
+    Good! *b* is now connected to *a* over TCP/IP, and we can see the beginnings of a graph structure. It is time to introduce our next building block.
+</div>
+<div class="md">
+    ## Edges
 
-    Here, we are running all the nodes int the same process, but as you probably have already infered, nodes can run on different machines and connect to each other over TCP/IP. For simplicity's sake, we'll continue running the nodes in the same process. Just keep in mind that there is nothing keeping us from distributing nodes across machines in our network.
+    We call the connections between nodes, *edges*. Observe that the parent node, here *a*, will assign each edge a unique *handle*. In this case *"tcp:4242#0"*, which tells us that this is the first TCP/IP connection on port 4242. If another node connects to *a*, the resulting edge would get the handle *"tcp:4242#1"*, the next edge *"tcp:4242#2"*, and so on. This will become important later on.
+
+    We are now running all the nodes in the same process, but as you probably have already infered, nodes can run on different machines and connect to each other over TCP/IP. For simplicity's sake though, we'll continue running the nodes in this example in the same process, but rest assured that there is nothing keeping us from distributing nodes across different machines in our network.
 
     So far we have created two nodes and given them names. Names are good for human readability, but that that is also all they are ever used for. In fact, there is nothing stopping us from creating multiple nodes with the same name. It is not a good idea to do so, but the system makes no effort to prohibit such a scenario. Thus, we need a more precise way to address a particular node. For that, we use the node's *Id*:
 </div>
@@ -228,7 +240,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
 
     The second parameter is the required protocol/endpoint definition that will go into Frame[0] of the message. Here we have specified that we want to talk version 1.0 of our imaginary protocol *app:chat* at the endpoint *sandbox/chat/*.
 
-    Lastly, we have a params array of additional "user frames" to send with the message. In this example, we are sending a single frame of text. The *Frame* type has a number of static convenience methods to construct common frame types. Here we are using *From(...)* to create a simple text frame using the default encoding (UTF-8).
+    Lastly, we have a params array of additional "user frames" to send with the message. In this example, we are sending a single frame of text.
 
     The following illustration depicts the message exchange caused by the method call. The sender node has a red outline, while receiving nodes have been "triggered" and are now red. Red arrows show the flow of the message. The message details can be found on the right side of the illustration. This is the convention that we are going to use throughout this document to show message flows.
 </div>
@@ -382,7 +394,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
     </div>
 </div>
 <div class="md">
-    You can see that routing these kind of messages does not require that the nodes have much knowledge of the graph around it. But what if we want to send a message that is on a completely different branch?
+    You can see that routing these kinds of messages does not require nodes to have much knowledge of the graph around it. But what if we want to send a message that is on a completely different branch?
 </div>
 <div class="md">
     #### Specific Receivers
@@ -486,7 +498,9 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 <div class="md">
     ## Modules
 
-    Protocols are handled by modules. Here's a simple implementation of the "app:chat" module on node *e*.
+    As we discussed earlier, protocols have a name, a version, and an implementation. We call the code that implements the protocol a *module*.
+    
+    Let's have a look at how an implementation of the *app:chat* protocol could look like. This sample module simply receives a chat message and dumps the text to out to the console. It's not a very useful protocol, but it will suffice as demonstration.
 </div>
 <pre><code class="lang-csharp">var cts = new CancellationTokenSource();
 
@@ -519,10 +533,30 @@ var appChat = Task.Run(() =>
 appChat.Wait();
 </code></pre>
 <pre><code class="lang-text">Hello, e!</code></pre>
+<div class="md">
+    OK, so that's working.
+    
+    Of course, we could make this module much more reusable by wrapping it in a class and take the node in as a constructor parameter, but that is entirely up to us. We could just as well implement the module in a static method, or use some other technique. The point here is that the framework doesn't actually have a concept for modules. A module is simply some piece of code running against a node, while utilizing the node's features to accomplish some goal. We are free to compose our modules as we wish, and that is a good thing. We want to keep the framework lean and mean, and put as few assumptions in there as we can possibly get away with.
+
+    Later, we'll have a look at some common patterns that we can reuse in our modules to solve frequently occuring "problems".
+</div>
 <div class="pb"></div>
 <div class="md">
-    # Dynamic Discovery
-    The sys:dir protocol allows us to do dynamic discovery. By *discovery* we mean the act of probing the graph for nodes that implement a protocol that we are interested in. For instance, if *b* wants to know all nodes that implement app:chat, we could run the following query:
+    # System Protocols
+    We should already have a solid basis on which we can build almost anything. With a little ingenuity, we should be able to device protocols for any conceivable problem that could come our way in the future. There are, however, some loose ends to tie up from a framework perspective.
+
+    For instance, there are problems that almost any code that is running in SIM will have to solve. It makes sense that we do not have to keep re-inventing the wheel every time these problems surface. That is what we have system protocols for.
+
+    Whenever there is a concern that is shared among several modules, we should generalize the problem into a system protocol and implement the solution in a system module. Since system modules follow the node, the functionality will be available wherever someone is using one.
+
+    In this chapter we'll discuss a few system protocols that it seems obvious that we need at this time. We might discover more later, some might prove not to be that useful anyway, but it should be a starting point for discussion.
+
+    ## System Directory (sys:dir)
+    We already had a passing look at the *sys:dir* protocol earlier in this document when we looked at how routing works.
+
+    ### Dynamic Discovery
+
+    The *sys:dir* protocol allows us to do dynamic discovery. By *discovery* we mean the act of probing the graph for nodes that implement protocols that we are interested in. For instance, if *b* wants to know all nodes that implement app:chat, we could run the following query:
 </div>
 <pre><code class="lang-csharp line-numbers">// Get a temporary endpoint to receive replies on
 var replyEndpoint = d.GetTempEndpoint();
@@ -549,7 +583,7 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
 // nodeIds now contains the ids of all nodes that claim to implement the app:chat/v1.0 protocol.
 </code></pre>
 <div class="md">
-    Or, since sys:dir is a required system protocol, the node already has a system module that does all that work for us:
+    Ouch, that seems a little bit involved. Luckily, the node's built-in *Directory* module will do all that work for us, since it already implements the complete *sys:dir* protocol:
 </div>
 <pre><code class="lang-csharp line-numbers">var queryResult = await d.Directory.QueryAsync("protocol=app:chat/v1.0", TimeSpan.FromSeconds(2)));
 </code></pre>
@@ -613,6 +647,13 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
 </div>
 <div class="pb"></div>
 <div class="md">
+    ## Security
+    ### Proof-of-Origin
+    ### Encryption
+    ### Authentication and Authorization
+</div>
+<div class="pb"></div>
+<div class="md">
     # Scratchpad
 
     ## Patterns
@@ -629,7 +670,6 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
     sys:config
 
     ## Testing
-    ## Security/Encryption
     ## Skywalker in Snow Sky
     ## Offline Scenarios
     ## NetMQ
