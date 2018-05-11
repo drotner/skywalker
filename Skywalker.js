@@ -31,9 +31,9 @@ $(".dot").each(function (i, el) {
     if (!$(el).hasClass("td")) {
         graph += "   rankdir=LR;";
     }
-    graph += "    graph[splines=line fontname=\"Roboto Condensed\" color=\"#aaaaaa\"];";
-    graph += "    node[orientation=90 fontname=\"Roboto Condensed\" style=filled fixedsize=true shape=house fillcolor=\"#47c3dc\" color=\"#ffffff\" fontcolor=\"#ffffff\" fontsize=10 penwidth=2];";
-    graph += "    edge[fontname=\"Roboto Condensed\" style=\"dashed\" color=\"#AAAAAA\" fontsize=6 penwidth=2 dir=none];";
+    graph += "    graph[splines=line fontname=\"Roboto Condensed\" style=filled fillcolor=\"#eeeeee\" color=\"#47c3dc\"];";
+    graph += "    node[orientation=90 fontname=\"Roboto Condensed\" style=filled fixedsize=true shape=house fillcolor=\"#47c3dc\" color=\"transparent\" fontcolor=\"#ffffff\" fontsize=10 penwidth=2];";
+    graph += "    edge[fontname=\"Roboto Condensed\" style=\"dashed\" color=\"#aaaaaa\" fontsize=6 penwidth=2 dir=none];";
     graph += (dot + "\n");
     graph += "}"
     var svg = Viz(graph);

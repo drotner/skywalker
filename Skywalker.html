@@ -20,7 +20,7 @@ DOCUMENT START
 -->
 <div class="md">
     # Project Skywalker
-    #### Design Document v1.0
+    #### Design Document v0.1
 
     Author: Rolf Lunder
 </div>
@@ -34,11 +34,13 @@ DOCUMENT START
 <div class="md">
     # Introduction
 
-    ## Integrate, Configure, Transport
+    *Skywalker* is the code name for a new SIM architecture. As we are progressing towards Snow Sky we see that the requirements for SIM are going to change. At some time in future, most of our software is going run as services in the cloud, and for many customers, SIM might end up being the only product from us that they have installed on-premises. This has significance for how we think about SIM, and what it should do. It is no longer only about moving data from a to b on a schedule.
+    
+    Our cloud services will require information about the customer's internal systems and vice versa. Snow Sky will have to be able to signal events to and configure the software that is running on-premises. SIM will become more of a cloud extender than a data pipe, and it will have to be online and connected at all times.
 
-    *Skywalker* is the code name for a new SIM architecture. As we are progressing towards Snow Sky we see that the requirements for SIM are going to change.
+    In order to support customer environments of varying sizes and complexity, we need a system that is both modular and flexible. We should allow the customer to run everything in a distributed fashion, and at the same time provide a solution that feels unified and is easy to manage.
 
-    In order to support customer environments of varying sizes and complexity, we need to build a system that is both modular and flexible. We should allow the customer to run everything in a distributed fashion and at the same time provide a solution that feels unified and is easy to manage.
+    Even for customers that must run everything on-premises, we should provide the exact same experience. Whatever we build for the cloud must also be able to run internally.
 </div>
 <div class="pb"></div>
 <div class="md">
@@ -46,19 +48,15 @@ DOCUMENT START
 
     In this chapter, we are going sketch up the fundamental building blocks that will make it possible for us to build a modular and flexible system that can evolve over time. It is going to be fairly technical, and we're going to use a lot of pseudo-code to explain the concepts. In order to make everything more digestable, however, we are going accompany the code with diagrams that visualize the results. Hopefully, this will enable even those that do not read code fluently to tag along.
 
-    Before we start, I would like to warn you that we will start our journey at quite a low level. There is a reason for that. I want to make sure that we establish a solid understanding of the fundamentals of the design before we start looking at the broader picture. Everyone knowing the basics well will hopefully hinder misunderstandings and promote productive and interesting disussions.
-
-    So, be warned and be patient. It will all come together in the end.
-
-    Let's take a deep dive...
+    Before we start, I would like to warn you that we will start our journey at quite a low level. There is a reason for that. I want to make sure that we establish a solid understanding of the fundamentals of the design before we start looking at the broader picture. 
 </div>
 <div class="md">
     ## Nodes
     At the heart of the new SIM design is the *Node* class. This class provides everything we need to compose complex and distributed systems. It is the glue in the architecture, and most of the code running in SIM will probably share an intimate relashionship with it.
 
-    I believe there's no better way to explain what a node is than to show how it actually works, so let's do just that. Of course, none of this actually exist yet, but to aid the explanation the rest of this section is written in a tutorial-like style.
+    What better way is there to explain what a node is than to show how it actually works? 
 
-    We begin by creating a node:
+    Let's start by creating a node:
 </div>
 <pre><code class="lang-csharp line-numbers">var a = new Node("a");</code></pre>
 <div class="frame">
@@ -143,6 +141,8 @@ f.Connect("inproc://c");
     Nodes can have 0-1 parent, and 0-n children. Also, there can be no cycles in the graph, so we're constrained to form tree topologies. Note that to save space, the graph illustrations in this document is laid out from left to right, but we're still talking about going up and down the branches in the tree. *Just remember that left is up, and right is down, and that branches go from top to bottom.*
 
     Observe that node *c* is listening on the *inproc* transport. This is an in-process transport that can be used to connect nodes that are running in the same host process. The motivation for having such a transport is to avoid unnecessary round-trips to the loopback interface. Other than that, an *inproc* edge behaves exactly like a *tcp* edge, and nodes should not care about which kind of transport they are connected over.
+
+    Edges will actively try to keep the connection open and re-connect if it goes down for some reason. Edges will also buffer data, first to memory, and then to disk, until the connection has been re-established. 
 </div>
 <div class="md">
     ## Messages
@@ -183,9 +183,9 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
 </div>
 <div class="md">
     ### Endpoints and Protocols
-    OK, so before we start sending messages we need to understand *endpoints* and *protocols*. The fact is that nodes won't accept just any random messages that you throw at them. For a node to be ready to receive anything, it needs to open an endpoint and start listening for incoming messages on it. An endpoint is very much like a local URI. For instance, a node can open the endpoint "sandbox/chat".
+    OK, so before we start sending messages we need to understand *endpoints* and *protocols*. The fact is that nodes won't accept just any random messages that you throw at them. For a node to be ready to receive anything, it needs to open an endpoint and start listening for incoming messages on it. An endpoint is very much like a local URI. For instance, a node can open the endpoint "sandbox/chat/".
     
-    Right, now we can address that particular endpoint on that particular node. This is exactly what Frame[0] is reserved for. When we construct the message, we specify which endpoint we want to reach as an ASCII encoded string in this frame:
+    Right, now we can address that particular endpoint on that particular node. This is exactly what Frame[0] is reserved for. When we construct the message, we specify which endpoint we want to reach as an ASCII encoded string in this frame. Our message now looks something like this:
 </div>
 <div class="frame">
     <table class="prop">
@@ -201,31 +201,33 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
 
         {name}/{version}
 
-    For example, if there is a protocol called "app:chat", and the endpoint supports version 1.0 of that, we would use the following string:
+    For example, if there is a protocol called "app.chat", and the endpoint supports version 1.0 of that, we would use the following string:
 
-        app:chat/v1.0
+        app.chat/v1.0
 
     There's of course more to a protocol than its name and version. When a developer designs a protocol, there will be assumptions on what kinds of messages are acceptable, how messages look like, the order in which they can be exchanged, and so on. This is implemented in the code that actually runs behind the endpoint, and we'll have a look at an example of that later on.
 
-    Good. Now the node has opened an endpoint and specified that it supports the *app:chat/v1.0* protocol. We can amend our message and specify which protocol we want to speak *at* the given endpoint:
+    Good. Now the node has opened an endpoint and specified that it supports the *app.chat/v1.0* protocol. We can amend our message and specify which protocol we want to speak *at* the given endpoint:
 </div>
 <div class="frame">
     <table class="prop">
         <tr><th>SenderId</th><td class="monospace">{senderId}</td></tr>
         <tr><th>ReceiverId</th><td class="monospace">{receiverId}</td></tr>
-        <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
+        <tr><th>Frame[0]</th><td>"app.chat/v1.0@sandbox/chat/"</td></tr>
     </table>
 </div>
 <div class="md">
-    Before we move along, here are some constraints. There will be more, but these are what we have for now:
+    OK, so now we're telling the receiving node that we want to talk app.chat/v1.0 **at** the endpoint *sandbox/chat*.
+
+    Before we move along, here are some constraints that apply to endpoints and protocols:
     - An endpoint is a sequence of one or more path segments separated by a '/' character.
     - An endpoint always ends with a trailing slash. If you forget to specify a trailing slash, one will be added for you by the system.
     - Valid characters for endpoints are alphanumeric characters + '/' and '-'.
     - The *sys/* endpoint is reserved by the system, and you cannot open it or any other endpoint under it.
-    - A protocol name is a sequence of one or more path segments separated by a ':' character.
+    - A protocol name is a sequence of one or more path segments separated by a '.' character.
     - After the protocol name comes a trailing '/' character and then the version.
     - The protocol version is in the format "v{major}.{minor}".
-    - There are a number of required "sys:*" protocols that live behind the *sys/* endpoint. These are already implemented by the *Node* class.
+    - There are a number of required "sys.*" protocols that live behind the *sys/* endpoint. These are already implemented by the *Node* class.
 
     Awesome, we're finally ready to send the message!
 </div>
@@ -233,14 +235,14 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
     ### Sending Messages
     To send a message, we can use one of the node's *Send(...)* methods. Let's send a simple message from *c* to *a*:
 </div>
-<pre><code class="lang-csharp line-numbers">c.Send("a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25", "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, a!"));
+<pre><code class="lang-csharp line-numbers">c.Send("a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25", "app.chat/v1.0@sandbox/chat/", Frame.From("Hello, a!"));
 </code></pre>
 <div class="md">
     The first parameter is the *Id* of the intended receiver, in this case node *a*. 
 
-    The second parameter is the required protocol/endpoint definition that will go into Frame[0] of the message. Here we have specified that we want to talk version 1.0 of our imaginary protocol *app:chat* at the endpoint *sandbox/chat/*.
+    The second parameter is the required protocol/endpoint definition that will go into Frame[0] of the message. Here we have specified that we want to talk version 1.0 of our imaginary protocol *app.chat* at the endpoint *sandbox/chat/*.
 
-    Lastly, we have a params array of additional "user frames" to send with the message. In this example, we are sending a single frame of text.
+    Lastly, we have a params array of additional "user frames" to send with the message. In this example, we are sending a single frame of text. It is the protocol that dictates what frames to 
 
     The following illustration depicts the message exchange caused by the method call. The sender node has a red outline, while receiving nodes have been "triggered" and are now red. Red arrows show the flow of the message. The message details can be found on the right side of the illustration. This is the convention that we are going to use throughout this document to show message flows.
 </div>
@@ -263,7 +265,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">38309a8f-25aa-499b-9c67-2bcbf2ee55c3</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat"</td></tr>
+            <tr><th>Frame[0]</th><td>"app.chat/v1.0@sandbox/chat"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, a!"</td></tr>
         </table>
     </div>
@@ -309,7 +311,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
 <div class="md">
     Example 1: Sending a message to all ancestor nodes:
 </div>
-<pre><code class="lang-csharp line-numbers">f.Send(Receivers.Ancestors, "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, ancestors!"));
+<pre><code class="lang-csharp line-numbers">f.Send(Receivers.Ancestors, "app.chat/v1.0@sandbox/chat/", Frame.From("Hello, ancestors!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -330,7 +332,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">92ff112d-485d-4c3c-a8c1-0ca328c5882d</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">00000000-0000-0000-0000-000000000000</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app.chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, ancestors!"</td></tr>
         </table>            
     </div>
@@ -338,7 +340,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
 <div class="md">
     Example 2: Sending a message to everyone (broadcasting):
 </div>
-<pre><code class="lang-csharp line-numbers">d.Send(Receivers.Everyone, "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, everyone!"));
+<pre><code class="lang-csharp line-numbers">d.Send(Receivers.Everyone, "app.chat/v1.0@sandbox/chat/", Frame.From("Hello, everyone!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -360,7 +362,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app.chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, everyone!"</td></tr>
         </table>            
     </div>
@@ -368,7 +370,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
 <div class="md">
     Example 3: Sending a message to all child nodes:
 </div>
-<pre><code class="lang-csharp line-numbers">c.Send(Receivers.Descendants, "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, children!"));
+<pre><code class="lang-csharp line-numbers">c.Send(Receivers.Descendants, "app.chat/v1.0@sandbox/chat/", Frame.From("Hello, children!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -388,7 +390,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">c4ef0640-5171-44a7-95b6-db130b3dcb90</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">ffffffff-ffff-ffff-ffff-ffffffffffff</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app.chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, children!"</td></tr>
         </table>            
     </div>
@@ -425,7 +427,7 @@ var obj = jsonFrame.DeserializeJson(Encoding.UTF8);
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">00000000-0000-0000-0000-000000000000</td></tr>
-            <tr><th>Frame[0]</th><td>"sys:dir/v1.0@sys/"</td></tr>
+            <tr><th>Frame[0]</th><td>"sys.dir/v1.0@sys/"</td></tr>
             <tr><th>Frame[1]</th><td>"beacon"</td></tr>
             <tr><th>Frame[1]</th><td>Id=3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c<br />
 Name=c<br />
@@ -435,13 +437,13 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
     </div>
 </div>
 <div class="md">
-    The "beacon" message is part of the *sys:dir* protocol (system directory). This protocol is one of several system protocols that all nodes are required to support, all of which start with "sys:", and all of which live at the reserved "sys/" endpoint. The *Node* class already implements all of them, so this is nothing we have to worry about.
+    The "beacon" message is part of the *sys.dir* protocol (system directory). This protocol is one of several system protocols that all nodes are required to support, all of which start with "sys.", and all of which live at the reserved "sys/" endpoint. The *Node* class already implements all of them, so this is nothing we have to worry about.
 
     Looking at the message details we can see that *ReceiverId* == *Receivers.Ancestors*, so this message should float up the branch and eventually reach the root node. Along the way, all ancestor nodes should also consume the message. We can see from the illustration that this is exactly the case.
 
-    The beacon message also contains information about the node's name and public key (to be used for encrypted communication). The *sys:dir* module that is running in all ancestor nodes will consume this information and keep it a routing table for look-up later.
+    The beacon message also contains information about the node's name and public key (to be used for encrypted communication). The *sys.dir* module that is running in all ancestor nodes will consume this information and keep it a routing table for look-up later.
     
-    As soon as the connecting node has sent its own beacon message, it will loop through its own routing table and send beacon messages for all its descendants as well. This way, the *sys:dir* module will build a complete picture of what nodes are beneath it.
+    As soon as the connecting node has sent its own beacon message, it will loop through its own routing table and send beacon messages for all its descendants as well. This way, the *sys.dir* module will build a complete picture of what nodes are beneath it.
     
     The routing table is a kind of dictionary that looks something like this:
 </div>
@@ -460,7 +462,7 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 
     Let's send a message from *d* to *e*:
 </div>
-<pre><code class="lang-csharp line-numbers">d.Send("3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c", "app:chat/v1.0@sandbox/chat/", Frame.From("Hello, e!"));
+<pre><code class="lang-csharp line-numbers">d.Send("3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c", "app.chat/v1.0@sandbox/chat/", Frame.From("Hello, e!"));
 </code></pre>
 <div class="frame">
     <div class="horiz">
@@ -481,7 +483,7 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">3883b2ad-b7ce-41ae-b3c4-bfe2ea57d50c</td></tr>
-            <tr><th>Frame[0]</th><td>"app:chat/v1.0@sandbox/chat/"</td></tr>
+            <tr><th>Frame[0]</th><td>"app.chat/v1.0@sandbox/chat/"</td></tr>
             <tr><th>Frame[1]</th><td>"Hello, e!"</td></tr>
         </table>            
     </div>
@@ -493,22 +495,22 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
     3. *c* in turn followed the same procedure as *a*, and then forwarded it to *e*.
     4. *e* figured out that it was the receiver and consumed the message.
 
-    Alright, routing now works, but what did *e* actually do with the message? Well, the message was handled by the "app:chat" module, of course!
+    Alright, routing now works, but what did *e* actually do with the message? Well, the message was handled by the "app.chat" module, of course!
 </div>
 <div class="md">
     ## Modules
 
     As we discussed earlier, protocols have a name, a version, and an implementation. We call the code that implements the protocol a *module*.
     
-    Let's have a look at how an implementation of the *app:chat* protocol could look like. This sample module simply receives a chat message and dumps the text to out to the console. It's not a very useful protocol, but it will suffice as demonstration.
+    Let's have a look at how an implementation of the *app.chat* protocol could look like. This sample module simply receives a chat message and dumps the text to out to the console. It's not a very useful protocol, but it will suffice as demonstration.
 </div>
 <pre><code class="lang-csharp">var cts = new CancellationTokenSource();
 
 // Create an async task that executes the module
 var appChat = Task.Run(() =>
 {
-    // Register an endpoint on the node and announce that we support the "app:chat/v1.0" protocol
-    if (e.TryRegisterEndpoint("app/chat", "app:chat/v1.0", out var endpoint, out var error))
+    // Register an endpoint on the node and announce that we support the "app.chat/v1.0" protocol
+    if (e.TryRegisterEndpoint("app/chat", "app.chat/v1.0", out var endpoint, out var error))
     {
         // Iterate through all messages that we receieve on the endpoint.
         // If the node shuts down, or cancellation is requested on cts, the
@@ -536,9 +538,7 @@ appChat.Wait();
 <div class="md">
     OK, so that's working.
     
-    Of course, we could make this module much more reusable by wrapping it in a class and take the node in as a constructor parameter, but that is entirely up to us. We could just as well implement the module in a static method, or use some other technique. The point here is that the framework doesn't actually have a concept for modules. A module is simply some piece of code running against a node, while utilizing the node's features to accomplish some goal. We are free to compose our modules as we wish, and that is a good thing. We want to keep the framework lean and mean, and put as few assumptions in there as we can possibly get away with.
-
-    Later, we'll have a look at some common patterns that we can reuse in our modules to solve frequently occuring "problems".
+    Of course, we could make this module much more reusable by wrapping it in a class and take the node in as a constructor parameter, but that is entirely up to us. We could just as well implement the module in a static method, or use some other technique. The point here is that the framework doesn't actually have a concept for modules. A module is simply some piece of code running against a node, utilizing the its features to communicate with modules in other nodes to accomplish some goal. We are free to compose our modules as we wish, and that is a good thing. We want to keep the framework lean and mean, and put as few assumptions in there as we can possibly get away with.
 </div>
 <div class="pb"></div>
 <div class="md">
@@ -550,21 +550,22 @@ appChat.Wait();
     Whenever there is a concern that is shared among several modules, we should generalize the problem into a system protocol and implement the solution in a system module. Since system modules follow the node, the functionality will be available wherever someone is using one.
 
     In this chapter we'll discuss a few system protocols that it seems obvious that we need at this time. We might discover more later, some might prove not to be that useful anyway, but it should be a starting point for discussion.
-
-    ## System Directory (sys:dir)
-    We already had a passing look at the *sys:dir* protocol earlier in this document when we looked at how routing works.
+</div>
+<div class="md">
+    ## System Directory (sys.dir)
+    We already had a passing look at the *sys.dir* protocol earlier in this document when we looked at how routing works.
 
     ### Dynamic Discovery
 
-    The *sys:dir* protocol allows us to do dynamic discovery. By *discovery* we mean the act of probing the graph for nodes that implement protocols that we are interested in. For instance, if *b* wants to know all nodes that implement app:chat, we could run the following query:
+    The *sys.dir* protocol allows us to do dynamic discovery. By *discovery* we mean the act of probing the graph for nodes that implement protocols that we are interested in. For instance, if *b* wants to know all nodes that implement app.chat, we could run the following query:
 </div>
 <pre><code class="lang-csharp line-numbers">// Get a temporary endpoint to receive replies on
 var replyEndpoint = d.GetTempEndpoint();
 
 // Broadcast the query to all nodes
-d.Send(Receivers.Everyone, "sys:dir/v1.0@sys/",
+d.Send(Receivers.Everyone, "sys.dir/v1.0@sys/",
     Frame.From("query"),
-    Frame.From("protocol=app:chat/v1.0"),
+    Frame.From("protocol=app.chat/v1.0"),
     replyEndpoint);
 
 // We'll collect the ids of all responding nodes in this list
@@ -580,12 +581,12 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
     }
 }
 
-// nodeIds now contains the ids of all nodes that claim to implement the app:chat/v1.0 protocol.
+// nodeIds now contains the ids of all nodes that claim to implement the app.chat/v1.0 protocol.
 </code></pre>
 <div class="md">
-    Ouch, that seems a little bit involved. Luckily, the node's built-in *Directory* module will do all that work for us, since it already implements the complete *sys:dir* protocol:
+    Ouch, that seems a little bit involved. Luckily, the node's built-in *SystemDirectory* module will do all that work for us, since it already implements the complete *sys.dir* protocol:
 </div>
-<pre><code class="lang-csharp line-numbers">var queryResult = await d.Directory.QueryAsync("protocol=app:chat/v1.0", TimeSpan.FromSeconds(2)));
+<pre><code class="lang-csharp line-numbers">var queryResult = await d.SystemDirectory.QueryAsync("protocol=app.chat/v1.0", TimeSpan.FromSeconds(2)));
 </code></pre>
 <div class="frame">
     <div class="caption">1) d broadcasts the query</div>
@@ -608,9 +609,9 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f</td></tr>
-            <tr><th>Frame[0]</th><td>"sys:dir/v1.0@sys/"</td></tr>
+            <tr><th>Frame[0]</th><td>"sys.dir/v1.0@sys/"</td></tr>
             <tr><th>Frame[1]</th><td>"query"</td></tr>
-            <tr><th>Frame[2]</th><td>"protocol=app:chat/v1.0"</td></tr>
+            <tr><th>Frame[2]</th><td>"protocol=app.chat/v1.0"</td></tr>
             <tr><th>Frame[3]</th><td>"sys/tmp/ae7216ljs/"</td></tr>
         </table>            
     </div>
@@ -636,54 +637,75 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
         <table class="prop">
             <tr><th>SenderId</th><td class="monospace">{senderId}</td></tr>
             <tr><th>ReceiverId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
-            <tr><th>Frame[0]</th><td>"sys:dir/v1.0@sys/tmp/ae7216ljs/"</td></tr>
+            <tr><th>Frame[0]</th><td>"sys.dir/v1.0@sys/tmp/ae7216ljs/"</td></tr>
             <tr><th>Frame[1]</th><td>"match"</td></tr>
-            <tr><th>Frame[2]</th><td>"app:chat/v1.0"</td></tr>
+            <tr><th>Frame[2]</th><td>"app.chat/v1.0"</td></tr>
         </table>            
     </div>
 </div>
 <div class="md">
-    In this case, *e* and *f* implements app:chat/v1.0, and reply with a positive match.
+    In this case, *e* and *f* implements app.chat/v1.0, and reply with a positive match.
+</div>
+<div class="md">
+    ## System Configuration (sys.cfg)
+    The *sys.cfg* protocol will provide mechanisms that will allow the modules that are running on a node to be remotely configured. Through it, a node will provide metadata about the different configuration settings that can be modified, and the validation rules that apply, so that a UI somewhere can render forms and present them to a user.
+
+    I have not given very much thought to this part yet. It is undoubtedly solvable. The DevOps team has done similar things with dynamic configuration pages in Snow Installer, and we would either re-use some of their code or create something akin to that.
+</div>
+<div class="md">
+    ## System Host (sys.host)
+    The *sys.host* protocol will allow a node to serve as a host for *connectors*. It will be possible to push a connector down to nodes that implement this protocol and install it. The node will host the connector in its own process, but it will run it in a separate app domain. A connector is actually a node in itself, and it will connect to its host node through an inproc:// transport. More on connectors shortly...
 </div>
 <div class="pb"></div>
 <div class="md">
-    ## Security
-    ### Proof-of-Origin
-    ### Encryption
-    ### Authentication and Authorization
+    # Security
+    All nodes have a private and a public key (RSA). A node can obtain another node's public key using the *sys.dir* protocol. The key can either be found in the node's own routing table (if the other node is a descendant), or we can ask the node's ancestors for help. Both nodes will share a common ancestor that has the details in its routing table. 
+
+    ## Proof-of-Origin
+    The sender will calculate a hash of the message contents and encrypt it with its private key. The receiver can calculate its own hash from the message content, use the sender's public key to decrypt the senders's hash, and then compare the two hashes to prove both the origin of the message and that its content has not been tampered with.
+
+    ## Encryption
+    For messages that are sent between specific nodes, there are often times no reason that intermediate nodes should be able to read the message content. They only need to read the routing information to forward the message in the right direction. Two nodes can negotiate a secure channel using a mechanism that is similar to that of the SSL/TLS handshake, albeit a little simplified. In this scenario, we consider the node that starts the conversation the client, and the other node the server:
+    1. The client obtains the server's public key.
+    2. The client generates a temporary endpoint (client endpoint) that will be used to receive replies from the server.
+    3. The client generates a secret (for symmetric encryption) and encrypts it and the client endpoint using the server's public key.
+    4. The client sends the encrypted secret and client endpoint to the server.
+    5. The server decrypts the secret and client endpoint.
+    6. The server generates a temporary endpoint (server endpoint) that will be used for further communication.
+    7. The server encrypts the server endpoint and sends it back to the client.
+    8. The client decrypts the server endpoint.
+    9. Further communication between the client and server endpoints can now be symmetrically encrypted using the shared secret.
+
+    If we want, we can add steps at the beginning to negotiate between different supported ciphers as well.
 </div>
 <div class="pb"></div>
 <div class="md">
-    # Scratchpad
+    # Deployable Bits
+    ## SIM Service
+    We'll package a node and all its system modules in a windows service. We enable the *sys.host* module on the node, so that it is able to host connectors.
 
-    ## Patterns
-    Describe common patterns
-
-    ## Skywalker Service
-    Web UI (connect node inproc to host node and use protocols to get/set config options on other nodes)
-
-    ## System Protocols
-    ### Required
-    sys:dir
-    
-    ### Optional
-    sys:config
-
-    ## Testing
-    ## Skywalker in Snow Sky
-    ## Offline Scenarios
-    ## NetMQ
+    ## Connectors
+    A connector is simply a node and a custom module that does something interesting, wrapped in a package that can be deployed to and hosted by a SIM Service.
+</div>
+<div class="pb"></div>
+<div class="md">
+    # Skywalker and Snow Sky
+    There really isn't that much to say about how this relates to Snow Sky, because the code doesn't care where it is running. We can simply spin up nodes as worker roles in Azure. Those nodes will connect with services in Snow Sky through connectors, and on-premises nodes will connect the nodes in the cloud. 
 </div>
 <div class="frame">
     <div class="caption">Snow Sky Configuration</div>
     <div class="dot">
+        newrank=true
         subgraph cluster_skyback {
-            label="Snow Sky Backend"
+            label="SIM Sky Backend"
             a
+            node[shape=circle]
+            a1 a2 a3
+            a->{a1 a2 a3}
         }
 
         subgraph cluster_skyfront {
-            label="Snow Sky Frontend"
+            label="SIM Sky Frontend"
             b
         }
     
@@ -700,8 +722,27 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
         a->b
         b->c
         b->k
+
+        subgraph cluster_skysvc {
+            label="Snow Sky Services"
+            node[shape=component]
+            sky1
+            sky2
+            sky3
+        }
+
+        a1->sky1
+        a2->sky2
+        a3->sky3
+
+        {rank=same; a b}
+        {rank=same; sky1 c k}
     </div>
 </div>
+<div class="pb"></div>
+<div class="md"> 
+</div>
+    # Tech Stack
 </div>
 <!-- 
 ***************************************************************************************************
