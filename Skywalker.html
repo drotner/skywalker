@@ -20,7 +20,7 @@ DOCUMENT START
 -->
 <div class="md">
     # Project Skywalker
-    #### Design Document v0.1
+    #### Design Document v0.1 - First Draft
 
     Author: Rolf Lunder
 </div>
@@ -48,7 +48,7 @@ DOCUMENT START
 
     In this chapter, we are going sketch up the fundamental building blocks that will make it possible for us to build a modular and flexible system that can evolve over time. It is going to be fairly technical, and we're going to use a lot of pseudo-code to explain the concepts. In order to make everything more digestable, however, we are going accompany the code with diagrams that visualize the results. Hopefully, this will enable even those that do not read code fluently to tag along.
 
-    Before we start, I would like to warn you that we will start our journey at quite a low level. There is a reason for that. I want to make sure that we establish a solid understanding of the fundamentals of the design before we start looking at the broader picture. 
+    Before we start, I would like to warn you that we will start our journey at quite a low level. There is a reason for that. I want to make sure that we establish a solid understanding of the fundamentals before we start looking at the broader picture. I've taken a bottom-up approach and tried to design a generic framework that can serve as a foundation for anything that we want to build now and in the future.
 </div>
 <div class="md">
     ## Nodes
@@ -639,22 +639,26 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
             <tr><th>ReceiverId</th><td class="monospace">02220e33-6e45-4b78-933e-fa7a8bdaf42a</td></tr>
             <tr><th>Frame[0]</th><td>"sys.dir/v1.0@sys/tmp/ae7216ljs/"</td></tr>
             <tr><th>Frame[1]</th><td>"match"</td></tr>
-            <tr><th>Frame[2]</th><td>"app.chat/v1.0"</td></tr>
+            <tr><th>Frame[2]</th><td>"app.chat/v1.0@sandbox/chat/"</td></tr>
         </table>            
     </div>
 </div>
 <div class="md">
-    In this case, *e* and *f* implements app.chat/v1.0, and reply with a positive match.
+    In this case, *e* and *f* implements *app.chat/v1.0* at the *sandbox/chat* endpoint, and reply with a positive match.
 </div>
 <div class="md">
     ## System Configuration (sys.cfg)
     The *sys.cfg* protocol will provide mechanisms that will allow the modules that are running on a node to be remotely configured. Through it, a node will provide metadata about the different configuration settings that can be modified, and the validation rules that apply, so that a UI somewhere can render forms and present them to a user.
 
     I have not given very much thought to this part yet. It is undoubtedly solvable. The DevOps team has done similar things with dynamic configuration pages in Snow Installer, and we would either re-use some of their code or create something akin to that.
+
+    TODO: Describe *sys.cfg* protocol...
 </div>
 <div class="md">
     ## System Host (sys.host)
     The *sys.host* protocol will allow a node to serve as a host for *connectors*. It will be possible to push a connector down to nodes that implement this protocol and install it. The node will host the connector in its own process, but it will run it in a separate app domain. A connector is actually a node in itself, and it will connect to its host node through an inproc:// transport. More on connectors shortly...
+
+    TODO: Describe *sys.host* protocol...
 </div>
 <div class="pb"></div>
 <div class="md">
@@ -677,20 +681,102 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
     9. Further communication between the client and server endpoints can now be symmetrically encrypted using the shared secret.
 
     If we want, we can add steps at the beginning to negotiate between different supported ciphers as well.
+
+    ## Authentication and Authorization
+
+    The topmost node in the network can serve as an authority and issue JSON Web Tokens to connecting nodes. When a node connects to the network, it will first enter a state where it can only send a limited set of messages up its own branch to authenticate itself against some user store. 
 </div>
+<div class="frame">
+    <div class="caption">f sends an authentication message</div>
+    <div class="horiz">
+        <div class="dot">
+            a[fillcolor=firebrick2]
+            b
+            c[fillcolor=firebrick2]
+            d
+            e
+            f[color=firebrick2]
+            a->d
+            a->b
+            a->c[style=solid color=firebrick2 dir=back]
+            c->e
+            c->f[style=solid color=firebrick2 dir=back]
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">92ff112d-485d-4c3c-a8c1-0ca328c5882d</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">00000000-0000-0000-0000-000000000000</td></tr>
+            <tr><th>Frame[0]</th><td>"sys.dir/v1.0@sys/"</td></tr>
+            <tr><th>Frame[1]</th><td>"authenticate"</td></tr>
+            <tr><th>Frame[2]</th><td>"{username}:{password}"</td></tr>
+            <tr><th>Frame[2]</th><td>"sys.dir/v1.0@sys/tmp/jheus8ek"</td></tr>
+        </table>            
+    </div>
+</div>
+<div class="md">
+    The topmost node will reply with a token:
+</div>
+<div class="frame">
+    <div class="caption">a replies with a token</div>
+    <div class="horiz">
+        <div class="dot">
+            a[color=firebrick2]
+            b
+            c
+            d
+            e
+            f[fillcolor=firebrick2]
+            a->d
+            a->b
+            a->c[style=solid color=firebrick2 dir=forward]
+            c->e
+            c->f[style=solid color=firebrick2 dir=forward]
+        </div>
+        <div class="vr"></div>
+        <table class="prop">
+            <tr><th>SenderId</th><td class="monospace">a3a7e8c2-053d-4a95-b2f1-4fcf2bd06a25</td></tr>
+            <tr><th>ReceiverId</th><td class="monospace">92ff112d-485d-4c3c-a8c1-0ca328c5882d</td></tr>
+            <tr><th>Frame[0]</th><td>"sys.dir/v1.0@sys/"</td></tr>
+            <tr><th>Frame[1]</th><td>"authenticated"</td></tr>
+            <tr><th>Frame[2]</th><td>"Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1MjU4..."</td></tr>
+        </table>            
+    </div>
+</div>
+<div class="md">
+    Of course, this is a simplified flow. When we implement this for real, *a* and *f* will first have to negotiate a secure channel to use for exchanging the credentials and token. I have omitted that part here for the sake of clarity.
+    
+    We can add security tokens into Frame[0] in our messages much like we would do for HTTP request headers:
+
+        app.chat/v1.0@sandbox/chat/
+        Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1MjU4... 
+
+    Nodes can then secure their endpoints by requiring certain claims to be present in the incoming message's bearer token.
+</div>
+<pre><code class="lang-csharp line-numbers">// Register and secure an endpoint
+if (e.TryRegisterEndpoint("sandbox/chat", "app.chat/v1.0", out var endpoint, out var error))
+{
+    endpoint.Authorize("smalltalker");
+}
+</code></pre>
 <div class="pb"></div>
 <div class="md">
     # Deployable Bits
     ## SIM Service
     We'll package a node and all its system modules in a windows service. We enable the *sys.host* module on the node, so that it is able to host connectors.
 
+    This will be what customers will install internally on their servers, and they can connect the services together in a way that makes sense for their environment.
+
     ## Connectors
     A connector is simply a node and a custom module that does something interesting, wrapped in a package that can be deployed to and hosted by a SIM Service.
+
+    Generally, we will write our connectors in a much more modular way that we do today. We will split the connectors into multiple parts, and the parts will find each other through a combination of dynamic discovery and configuration, and then talk to each other using a common protocol.
 </div>
 <div class="pb"></div>
 <div class="md">
     # Skywalker and Snow Sky
     There really isn't that much to say about how this relates to Snow Sky, because the code doesn't care where it is running. We can simply spin up nodes as worker roles in Azure. Those nodes will connect with services in Snow Sky through connectors, and on-premises nodes will connect the nodes in the cloud. 
+
+    Here's an example of what it *could* look like.
 </div>
 <div class="frame">
     <div class="caption">Snow Sky Configuration</div>
@@ -710,7 +796,7 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
         }
     
         subgraph cluster_onprem {
-            label="On-premise"
+            label="On-premises"
             c d e
             c->d
             c->e
@@ -739,10 +825,6 @@ foreach (var msg in replyEndpoint.Receive(TimeSpan.FromSeconds(2)))
         {rank=same; sky1 c k}
     </div>
 </div>
-<div class="pb"></div>
-<div class="md"> 
-</div>
-    # Tech Stack
 </div>
 <!-- 
 ***************************************************************************************************
