@@ -510,7 +510,7 @@ PublicKey=&lt;RSAKeyValue&gt;&lt;Modulus&gt;uw+knpRKjmLpcimIrN5..."
 var appChat = Task.Run(() =>
 {
     // Register an endpoint on the node and announce that we support the "app.chat/v1.0" protocol
-    if (e.TryRegisterEndpoint("app/chat", "app.chat/v1.0", out var endpoint, out var error))
+    if (e.TryRegisterEndpoint("sandbox/chat", "app.chat/v1.0", out var endpoint, out var error))
     {
         // Iterate through all messages that we receieve on the endpoint.
         // If the node shuts down, or cancellation is requested on cts, the
